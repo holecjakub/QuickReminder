@@ -1,0 +1,49 @@
+name: QuickReminder
+options:
+  bundleIdPrefix: com.jholec
+  deploymentTarget:
+    macOS: "26.0"
+  xcodeVersion: "26.5"
+  generateEmptyDirectories: true
+
+packages:
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts
+    from: 2.4.0
+
+targets:
+  QuickReminder:
+    type: application
+    platform: macOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Sources/QuickReminder
+        type: group
+    resources:
+      - path: Resources/Assets.xcassets
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        LSUIElement: true
+        NSPrincipalClass: NSApplication
+        NSRemindersFullAccessUsageDescription: "QuickReminder needs access to Reminders so you can quickly capture tasks from the floating overlay."
+        NSRemindersUsageDescription: "QuickReminder needs access to Reminders so you can quickly capture tasks from the floating overlay."
+    entitlements:
+      path: Resources/QuickReminder.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.personal-information.reminders: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jholec.QuickReminder
+        PRODUCT_NAME: QuickReminder
+        SWIFT_VERSION: "6.3"
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+        ENABLE_HARDENED_RUNTIME: YES
+        SWIFT_STRICT_CONCURRENCY: complete
+    dependencies:
+      - package: KeyboardShortcuts
