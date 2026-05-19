@@ -8,19 +8,21 @@ struct InputView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             DashedCircleView()
-                .padding(.top, 4)
+                .padding(.top, 6)
 
             VStack(alignment: .leading, spacing: 4) {
                 TextField("New Reminder", text: $title)
-                    .font(.system(size: 18, weight: .regular, design: .default))
+                    .font(.system(size: 20, weight: .regular, design: .default))
                     .foregroundStyle(.white)
+                    .tint(Color.accentColor)
                     .focused($titleFocused)
                     .textFieldStyle(.plain)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 TextField("Notes", text: $notes)
-                    .font(.system(size: 14, weight: .regular, design: .default))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .font(.system(size: 15, weight: .regular, design: .default))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .tint(Color.accentColor)
                     .textFieldStyle(.plain)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }

@@ -3,7 +3,7 @@ import AppKit
 final class QuickReminderPanel: NSPanel {
     init() {
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 200),
+            contentRect: NSRect(x: 0, y: 0, width: 380, height: 220),
             styleMask: [.nonactivatingPanel, .titled, .fullSizeContentView],
             backing: .buffered,
             defer: false

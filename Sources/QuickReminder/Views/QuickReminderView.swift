@@ -68,7 +68,7 @@ struct QuickReminderView: View {
                     onSave: saveReminder
                 )
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 22)
             .padding(.vertical, 18)
         }
         .scaleEffect(isVisible ? 1.0 : 0.96)

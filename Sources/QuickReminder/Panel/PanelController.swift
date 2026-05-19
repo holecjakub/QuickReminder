@@ -15,12 +15,10 @@ final class PanelController {
     }
 
     private func setupContentView() {
-        let rootView = QuickReminderView()
+        let rootView = QuickReminderView().environment(\.colorScheme, .dark)
         let hostingView = NSHostingView(rootView: rootView)
         hostingView.wantsLayer = true
-        hostingView.layer?.cornerRadius = Self.cornerRadius
-        hostingView.layer?.masksToBounds = true
-        hostingView.layer?.backgroundColor = NSColor(white: 0.10, alpha: 0.92).cgColor
+        hostingView.layer?.backgroundColor = NSColor.clear.cgColor
 
         let container = NSView()
         container.wantsLayer = true
@@ -30,6 +28,7 @@ final class PanelController {
         if #available(macOS 26.0, *) {
             let glass = NSGlassEffectView()
             glass.cornerRadius = Self.cornerRadius
+            glass.contentView = hostingView
             container.addSubview(glass)
             glass.translatesAutoresizingMaskIntoConstraints = false
             NSLayoutConstraint.activate([
@@ -53,21 +52,20 @@ final class PanelController {
                 effectView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
                 effectView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             ])
+            container.addSubview(hostingView)
+            hostingView.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                hostingView.topAnchor.constraint(equalTo: container.topAnchor),
+                hostingView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+                hostingView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                hostingView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            ])
         }
-
-        container.addSubview(hostingView)
-        hostingView.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            hostingView.topAnchor.constraint(equalTo: container.topAnchor),
-            hostingView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            hostingView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            hostingView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-        ])
 
         panel.contentView = container
     }
 
-    private static let cornerRadius: CGFloat = 26
+    private static let cornerRadius: CGFloat = 28
 
     func toggle() {
         if isVisible { hide() } else { show() }
@@ -76,17 +74,9 @@ final class PanelController {
     func show() {
         guard !isVisible else { return }
         centerOnMouseScreen()
-        panel.alphaValue = 0
         panel.makeKeyAndOrderFront(nil)
         isVisible = true
         NotificationCenter.default.post(name: .panelWillShow, object: nil)
-
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.18
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            panel.animator().alphaValue = 1
-        }
-
         installClickMonitor()
     }
 
@@ -97,16 +87,10 @@ final class PanelController {
         NotificationCenter.default.post(name: .panelDidHide, object: nil)
 
         let capturedPanel = panel
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.12
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            capturedPanel.animator().alphaValue = 0
-        }, completionHandler: {
-            Task { @MainActor in
-                capturedPanel.orderOut(nil)
-                capturedPanel.alphaValue = 1
-            }
-        })
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 130_000_000)
+            capturedPanel.orderOut(nil)
+        }
     }
 
     private func centerOnMouseScreen() {

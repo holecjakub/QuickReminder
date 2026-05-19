@@ -20,12 +20,12 @@ struct HeaderView: View {
             Button {
                 showListPicker = true
             } label: {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
                     Text(selectedListName)
-                        .font(.system(size: 24, weight: .bold, design: .default))
+                        .font(.system(size: 26, weight: .bold, design: .default))
                         .foregroundStyle(Color.accentColor)
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 17, weight: .bold))
+                        .font(.system(size: 20, weight: .bold))
                         .foregroundStyle(Color.accentColor)
                 }
             }
@@ -42,12 +42,13 @@ struct HeaderView: View {
 
             Button(action: onClose) {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 22))
+                    .font(.system(size: 26))
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(.white)
             }
             .buttonStyle(.plain)
-            .frame(width: 28, height: 28)
+            .frame(width: 30, height: 30)
+            .accessibilityLabel("Close")
         }
     }
 }
