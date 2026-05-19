@@ -20,19 +20,19 @@ struct BottomBar: View {
     }
 
     private var pillView: some View {
-        HStack(spacing: 20) {
+        HStack(spacing: 26) {
             dateMenu
             locationButton
             flagButton
         }
-        .padding(.horizontal, 14)
-        .frame(height: 40)
+        .padding(.horizontal, 18)
+        .frame(height: 44)
         .background(
             Capsule()
                 .fill(Color.white.opacity(0.08))
                 .overlay(
                     Capsule()
-                        .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
+                        .strokeBorder(Color.white.opacity(0.07), lineWidth: 1)
                 )
         )
     }
@@ -75,9 +75,9 @@ struct BottomBar: View {
             }
         } label: {
             Image(systemName: "calendar.badge.clock")
-                .font(.system(size: 16, weight: .regular))
+                .font(.system(size: 18, weight: .regular))
                 .foregroundStyle(dueDate != nil ? Color.accentColor : .white)
-                .frame(width: 28, height: 28)
+                .frame(width: 30, height: 30)
                 .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
@@ -93,9 +93,9 @@ struct BottomBar: View {
             showLocationField = true
         } label: {
             Image(systemName: "paperplane.fill")
-                .font(.system(size: 16, weight: .regular))
+                .font(.system(size: 18, weight: .regular))
                 .foregroundStyle(!locationText.isEmpty ? Color.accentColor : .white)
-                .frame(width: 28, height: 28)
+                .frame(width: 30, height: 30)
         }
         .buttonStyle(.plain)
         .popover(isPresented: $showLocationField, arrowEdge: .top) {
@@ -108,9 +108,9 @@ struct BottomBar: View {
             flagged.toggle()
         } label: {
             Image(systemName: flagged ? "flag.fill" : "flag")
-                .font(.system(size: 16, weight: .regular))
+                .font(.system(size: 18, weight: .regular))
                 .foregroundStyle(flagged ? .orange : .white)
-                .frame(width: 28, height: 28)
+                .frame(width: 30, height: 30)
         }
         .buttonStyle(.plain)
     }
@@ -135,10 +135,10 @@ struct BottomBar: View {
         Button(action: handleSave) {
             ZStack {
                 Circle()
-                    .fill(canSave ? Color.accentColor : Color.white.opacity(0.12))
-                    .frame(width: 44, height: 44)
+                    .fill(canSave ? Color.accentColor : Color.white.opacity(0.14))
+                    .frame(width: 48, height: 48)
                 Image(systemName: "checkmark")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 19, weight: .semibold))
                     .foregroundStyle(.white)
             }
         }

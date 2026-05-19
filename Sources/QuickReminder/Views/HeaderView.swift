@@ -20,12 +20,12 @@ struct HeaderView: View {
             Button {
                 showListPicker = true
             } label: {
-                HStack(alignment: .center, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(selectedListName)
-                        .font(.system(size: 22, weight: .bold, design: .default))
+                        .font(.system(size: 24, weight: .bold, design: .default))
                         .foregroundStyle(Color.accentColor)
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(Color.accentColor)
                 }
             }

@@ -17,37 +17,57 @@ final class PanelController {
     private func setupContentView() {
         let rootView = QuickReminderView()
         let hostingView = NSHostingView(rootView: rootView)
+        hostingView.wantsLayer = true
+        hostingView.layer?.cornerRadius = Self.cornerRadius
+        hostingView.layer?.masksToBounds = true
+        hostingView.layer?.backgroundColor = NSColor(white: 0.10, alpha: 0.92).cgColor
+
+        let container = NSView()
+        container.wantsLayer = true
+        container.layer?.cornerRadius = Self.cornerRadius
+        container.layer?.masksToBounds = true
 
         if #available(macOS 26.0, *) {
             let glass = NSGlassEffectView()
-            glass.cornerRadius = 24
-            hostingView.translatesAutoresizingMaskIntoConstraints = false
-            glass.addSubview(hostingView)
+            glass.cornerRadius = Self.cornerRadius
+            container.addSubview(glass)
+            glass.translatesAutoresizingMaskIntoConstraints = false
             NSLayoutConstraint.activate([
-                hostingView.topAnchor.constraint(equalTo: glass.topAnchor),
-                hostingView.bottomAnchor.constraint(equalTo: glass.bottomAnchor),
-                hostingView.leadingAnchor.constraint(equalTo: glass.leadingAnchor),
-                hostingView.trailingAnchor.constraint(equalTo: glass.trailingAnchor),
+                glass.topAnchor.constraint(equalTo: container.topAnchor),
+                glass.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+                glass.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                glass.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             ])
-            panel.contentView = glass
         } else {
             let effectView = NSVisualEffectView()
             effectView.material = .hudWindow
             effectView.state = .active
             effectView.wantsLayer = true
-            effectView.layer?.cornerRadius = 24
+            effectView.layer?.cornerRadius = Self.cornerRadius
             effectView.layer?.masksToBounds = true
-            hostingView.translatesAutoresizingMaskIntoConstraints = false
-            effectView.addSubview(hostingView)
+            container.addSubview(effectView)
+            effectView.translatesAutoresizingMaskIntoConstraints = false
             NSLayoutConstraint.activate([
-                hostingView.topAnchor.constraint(equalTo: effectView.topAnchor),
-                hostingView.bottomAnchor.constraint(equalTo: effectView.bottomAnchor),
-                hostingView.leadingAnchor.constraint(equalTo: effectView.leadingAnchor),
-                hostingView.trailingAnchor.constraint(equalTo: effectView.trailingAnchor),
+                effectView.topAnchor.constraint(equalTo: container.topAnchor),
+                effectView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+                effectView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                effectView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             ])
-            panel.contentView = effectView
         }
+
+        container.addSubview(hostingView)
+        hostingView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            hostingView.topAnchor.constraint(equalTo: container.topAnchor),
+            hostingView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            hostingView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            hostingView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        ])
+
+        panel.contentView = container
     }
+
+    private static let cornerRadius: CGFloat = 26
 
     func toggle() {
         if isVisible { hide() } else { show() }

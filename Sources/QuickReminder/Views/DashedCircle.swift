@@ -10,9 +10,9 @@ struct DashedCircleView: View {
     var body: some View {
         DashedCircle()
             .stroke(
-                Color.secondary.opacity(0.6),
-                style: StrokeStyle(lineWidth: 1.5, dash: [3.5, 3])
+                Color.white.opacity(0.5),
+                style: StrokeStyle(lineWidth: 1.5, dash: [2.5, 2.5])
             )
-            .frame(width: 18, height: 18)
+            .frame(width: 20, height: 20)
     }
 }

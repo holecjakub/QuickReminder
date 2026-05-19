@@ -33,7 +33,6 @@ targets:
     entitlements:
       path: Resources/QuickReminder.entitlements
       properties:
-        com.apple.security.app-sandbox: true
         com.apple.security.personal-information.reminders: true
     settings:
       base:
