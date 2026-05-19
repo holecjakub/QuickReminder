@@ -20,7 +20,7 @@ final class PanelController {
 
         if #available(macOS 26.0, *) {
             let glass = NSGlassEffectView()
-            glass.cornerRadius = 28
+            glass.cornerRadius = 24
             hostingView.translatesAutoresizingMaskIntoConstraints = false
             glass.addSubview(hostingView)
             NSLayoutConstraint.activate([
@@ -35,7 +35,7 @@ final class PanelController {
             effectView.material = .hudWindow
             effectView.state = .active
             effectView.wantsLayer = true
-            effectView.layer?.cornerRadius = 28
+            effectView.layer?.cornerRadius = 24
             effectView.layer?.masksToBounds = true
             hostingView.translatesAutoresizingMaskIntoConstraints = false
             effectView.addSubview(hostingView)

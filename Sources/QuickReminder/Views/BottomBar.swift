@@ -7,8 +7,8 @@ struct BottomBar: View {
     let canSave: Bool
     let onSave: () -> Void
 
-    @State private var showDatePicker = false
     @State private var showLocationField = false
+    @State private var showCustomDatePicker = false
     @State private var saveScale: CGFloat = 1.0
 
     var body: some View {
@@ -20,31 +20,13 @@ struct BottomBar: View {
     }
 
     private var pillView: some View {
-        HStack(spacing: 28) {
-            pillButton(icon: "calendar.badge.clock", tinted: dueDate != nil) {
-                showDatePicker = true
-            }
-            .popover(isPresented: $showDatePicker, arrowEdge: .top) {
-                DatePickerPopover(selectedDate: $dueDate, isPresented: $showDatePicker)
-            }
-
-            pillButton(icon: "paperplane.fill", tinted: !locationText.isEmpty) {
-                showLocationField = true
-            }
-            .popover(isPresented: $showLocationField, arrowEdge: .top) {
-                locationPopover
-            }
-
-            pillButton(
-                icon: flagged ? "flag.fill" : "flag",
-                tinted: flagged,
-                tintColor: flagged ? .orange : .white
-            ) {
-                flagged.toggle()
-            }
+        HStack(spacing: 20) {
+            dateMenu
+            locationButton
+            flagButton
         }
-        .padding(.horizontal, 18)
-        .frame(height: 52)
+        .padding(.horizontal, 14)
+        .frame(height: 40)
         .background(
             Capsule()
                 .fill(Color.white.opacity(0.08))
@@ -55,20 +37,98 @@ struct BottomBar: View {
         )
     }
 
+    private var dateMenu: some View {
+        Menu {
+            Button {
+                dueDate = nil
+            } label: {
+                Label("None", systemImage: "calendar.badge.minus")
+            }
+
+            Divider()
+
+            Button {
+                flagged = true
+                dueDate = Date().addingTimeInterval(60 * 60)
+            } label: {
+                Label("Mark as Urgent", systemImage: "alarm")
+            }
+
+            Button {
+                dueDate = Date().addingTimeInterval(60 * 60)
+            } label: {
+                Label("Remind Me In 1 Hour", systemImage: "clock")
+            }
+
+            Button {
+                dueDate = tomorrowAt9AM()
+            } label: {
+                Label("Remind Me Tomorrow", systemImage: "calendar")
+            }
+
+            Divider()
+
+            Button {
+                showCustomDatePicker = true
+            } label: {
+                Label("Remind Me Later…", systemImage: "calendar")
+            }
+        } label: {
+            Image(systemName: "calendar.badge.clock")
+                .font(.system(size: 16, weight: .regular))
+                .foregroundStyle(dueDate != nil ? Color.accentColor : .white)
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .popover(isPresented: $showCustomDatePicker, arrowEdge: .top) {
+            DatePickerPopover(selectedDate: $dueDate, isPresented: $showCustomDatePicker)
+        }
+    }
+
+    private var locationButton: some View {
+        Button {
+            showLocationField = true
+        } label: {
+            Image(systemName: "paperplane.fill")
+                .font(.system(size: 16, weight: .regular))
+                .foregroundStyle(!locationText.isEmpty ? Color.accentColor : .white)
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $showLocationField, arrowEdge: .top) {
+            locationPopover
+        }
+    }
+
+    private var flagButton: some View {
+        Button {
+            flagged.toggle()
+        } label: {
+            Image(systemName: flagged ? "flag.fill" : "flag")
+                .font(.system(size: 16, weight: .regular))
+                .foregroundStyle(flagged ? .orange : .white)
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.plain)
+    }
+
     private var locationPopover: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("Location")
                 .font(.headline)
             TextField("Enter location", text: $locationText)
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 220)
+                .frame(width: 200)
             HStack {
                 Spacer()
                 Button("Done") { showLocationField = false }
                     .buttonStyle(.borderedProminent)
             }
         }
-        .padding(16)
+        .padding(14)
     }
 
     private var saveButton: some View {
@@ -76,9 +136,9 @@ struct BottomBar: View {
             ZStack {
                 Circle()
                     .fill(canSave ? Color.accentColor : Color.white.opacity(0.12))
-                    .frame(width: 56, height: 56)
+                    .frame(width: 44, height: 44)
                 Image(systemName: "checkmark")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(.white)
             }
         }
@@ -102,19 +162,9 @@ struct BottomBar: View {
         }
     }
 
-    @ViewBuilder
-    private func pillButton(
-        icon: String,
-        tinted: Bool,
-        tintColor: Color = .accentColor,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 22, weight: .regular))
-                .foregroundStyle(tinted ? tintColor : .white)
-                .frame(width: 36, height: 36)
-        }
-        .buttonStyle(.plain)
+    private func tomorrowAt9AM() -> Date {
+        let cal = Calendar.current
+        let tomorrow = cal.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        return cal.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow) ?? tomorrow
     }
 }

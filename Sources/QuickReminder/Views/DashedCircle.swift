@@ -13,6 +13,6 @@ struct DashedCircleView: View {
                 Color.secondary.opacity(0.6),
                 style: StrokeStyle(lineWidth: 1.5, dash: [3.5, 3])
             )
-            .frame(width: 24, height: 24)
+            .frame(width: 18, height: 18)
     }
 }

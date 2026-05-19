@@ -30,7 +30,7 @@ struct QuickReminderView: View {
                     onClose: { PanelController.shared.hide() }
                 )
 
-                Spacer().frame(height: 18)
+                Spacer().frame(height: 14)
 
                 InputView(
                     title: $title,
@@ -68,8 +68,8 @@ struct QuickReminderView: View {
                     onSave: saveReminder
                 )
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 20)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
         }
         .scaleEffect(isVisible ? 1.0 : 0.96)
         .opacity(isVisible ? 1.0 : 0.0)

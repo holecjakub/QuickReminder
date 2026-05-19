@@ -19,11 +19,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setupMenuBar() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "checklist", accessibilityDescription: "QuickReminder")
-            button.image?.isTemplate = true
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        guard let button = statusItem?.button else { return }
+
+        let symbolNames = ["checklist", "list.bullet.clipboard", "list.bullet", "checkmark.circle"]
+        var image: NSImage?
+        for name in symbolNames {
+            if let img = NSImage(systemSymbolName: name, accessibilityDescription: "QuickReminder") {
+                image = img
+                break
+            }
         }
+        if let image {
+            image.isTemplate = true
+            button.image = image
+        } else {
+            button.title = "QR"
+        }
+        button.toolTip = "QuickReminder — ⇧⌘R"
 
         let menu = NSMenu()
         menu.addItem(withTitle: "Show Quick Reminder", action: #selector(showPanel), keyEquivalent: "")
