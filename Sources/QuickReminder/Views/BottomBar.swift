@@ -60,8 +60,11 @@ struct BottomBar: View {
             }
         } label: {
             Image(systemName: "calendar.badge.clock")
-                .font(.system(size: 20, weight: .regular))
+                .resizable()
+                .scaledToFit()
+                .fontWeight(.regular)
                 .foregroundStyle(dueDate != nil ? Color.accentColor : .white)
+                .frame(width: 22, height: 22)
                 .frame(width: 32, height: 32)
                 .contentShape(Rectangle())
         }
@@ -77,8 +80,10 @@ struct BottomBar: View {
     private var locationButton: some View {
         Button { showLocationField = true } label: {
             Image(systemName: "paperplane.fill")
-                .font(.system(size: 20, weight: .regular))
+                .resizable()
+                .scaledToFit()
                 .foregroundStyle(!locationText.isEmpty ? Color.accentColor : .white)
+                .frame(width: 22, height: 22)
                 .frame(width: 32, height: 32)
         }
         .buttonStyle(.plain)
@@ -91,8 +96,10 @@ struct BottomBar: View {
     private var flagButton: some View {
         Button { flagged.toggle() } label: {
             Image(systemName: flagged ? "flag.fill" : "flag")
-                .font(.system(size: 20, weight: .regular))
+                .resizable()
+                .scaledToFit()
                 .foregroundStyle(flagged ? .orange : .white)
+                .frame(width: 22, height: 22)
                 .frame(width: 32, height: 32)
         }
         .buttonStyle(.plain)
