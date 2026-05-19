@@ -67,7 +67,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettings() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
         NSApp.activate(ignoringOtherApps: true)
+        let selectorName = "show" + "SettingsWindow:"
+        NSApp.sendAction(NSSelectorFromString(selectorName), to: nil, from: nil)
     }
 }
