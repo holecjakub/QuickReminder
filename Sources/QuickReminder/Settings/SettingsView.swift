@@ -1,5 +1,4 @@
 import SwiftUI
-import KeyboardShortcuts
 
 struct SettingsView: View {
     @ObservedObject private var remindersService = RemindersService.shared
@@ -8,7 +7,9 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Hotkey") {
-                KeyboardShortcuts.Recorder("Show Quick Reminder:", name: .showQuickReminder)
+                LabeledContent("Show Quick Reminder:") {
+                    HotkeyRecorderView()
+                }
             }
 
             Section("Default List") {
@@ -21,7 +22,7 @@ struct SettingsView: View {
                         ForEach(remindersService.calendars, id: \.calendarIdentifier) { cal in
                             HStack {
                                 Circle()
-                                    .fill(Color(cgColor: cal.cgColor))
+                                    .fill(cal.cgColor.map(Color.init(cgColor:)) ?? .gray)
                                     .frame(width: 10, height: 10)
                                 Text(cal.title)
                             }
