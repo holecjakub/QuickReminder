@@ -1,7 +1,10 @@
 import SwiftUI
 
+/// Root of the quick-reminder UI, laid out 1:1 with the iOS 26 overlay
+/// (header → input → bottom bar), sitting below the notch band.
 @MainActor
 struct QuickReminderView: View {
+    @EnvironmentObject private var state: NotchState
     @ObservedObject private var remindersService = RemindersService.shared
     @AppStorage("selectedListId") private var selectedListId: String = ""
 
@@ -11,99 +14,98 @@ struct QuickReminderView: View {
     @State private var flagged: Bool = false
     @State private var locationText: String = ""
     @State private var showListPicker: Bool = false
-    @State private var showSaveError: Bool = false
-    @State private var isVisible: Bool = false
+    @State private var showLocationField: Bool = false
+    @State private var showCustomDatePicker: Bool = false
+    @State private var saveErrorText: String? = nil
 
     @FocusState private var titleFocused: Bool
 
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
-        ZStack {
-            Color.clear
+        VStack(alignment: .leading, spacing: 0) {
+            // The physical notch / menu-bar band. Content starts below it.
+            Color.clear.frame(height: state.notchBandHeight)
 
-            VStack(alignment: .leading, spacing: 0) {
-                HeaderView(
-                    remindersService: remindersService,
-                    selectedListId: $selectedListId,
-                    showListPicker: $showListPicker,
-                    onClose: { PanelController.shared.hide() }
-                )
+            HeaderView(
+                remindersService: remindersService,
+                selectedListId: $selectedListId,
+                showListPicker: $showListPicker,
+                onClose: { PanelController.shared.hide() }
+            )
+            .padding(.top, 8)
 
-                Spacer().frame(height: 14)
+            InputView(
+                title: $title,
+                notes: $notes,
+                titleFocused: $titleFocused,
+                onSubmit: { if canSave { saveReminder() } }
+            )
+            .padding(.top, 10)
 
-                InputView(
-                    title: $title,
-                    notes: $notes,
-                    titleFocused: $titleFocused
-                )
+            Spacer(minLength: 14)
 
-                Spacer()
-
-                if let date = dueDate {
-                    HStack {
-                        Image(systemName: "calendar")
-                            .font(.system(size: 12))
-                            .foregroundStyle(Color.accentColor)
-                        Text(date.formatted(date: .abbreviated, time: .shortened))
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Color.accentColor)
-                        Button {
-                            dueDate = nil
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 12))
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
+            if let saveErrorText {
+                Text(saveErrorText)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color(red: 1.0, green: 0.27, blue: 0.23))
+                    .padding(.leading, 31)
                     .padding(.bottom, 8)
-                }
-
-                BottomBar(
-                    dueDate: $dueDate,
-                    flagged: $flagged,
-                    locationText: $locationText,
-                    canSave: canSave,
-                    onSave: saveReminder
-                )
+                    .transition(.opacity)
             }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 18)
+
+            if let date = dueDate {
+                dateChip(date)
+                    .padding(.bottom, 8)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+
+            BottomBar(
+                dueDate: $dueDate,
+                flagged: $flagged,
+                locationText: $locationText,
+                canSave: canSave,
+                onSave: saveReminder,
+                showLocationField: $showLocationField,
+                showCustomDatePicker: $showCustomDatePicker
+            )
+            .padding(.bottom, 22)
         }
-        .scaleEffect(isVisible ? 1.0 : 0.96)
-        .opacity(isVisible ? 1.0 : 0.0)
-        .onAppear { animateIn() }
+        .padding(.horizontal, Theme.horizontalPadding + NotchLayout.openTopRadius)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onReceive(NotificationCenter.default.publisher(for: .panelWillShow)) { _ in
-            isVisible = false
             resetState()
-            animateIn()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { titleFocused = true }
         }
         .onReceive(NotificationCenter.default.publisher(for: .panelDidHide)) { _ in
-            withAnimation(.easeOut(duration: 0.12)) {
-                isVisible = false
-            }
+            titleFocused = false
+            showListPicker = false
+            showLocationField = false
+            showCustomDatePicker = false
         }
-        .background(
-            Button("", action: { if canSave { saveReminder() } })
-                .keyboardShortcut(.return, modifiers: .command)
-                .opacity(0)
-                .frame(width: 0, height: 0)
-                .accessibilityHidden(true)
-        )
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dueDate != nil)
     }
 
-    private func animateIn() {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
-            isVisible = true
+    private func dateChip(_ date: Date) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "calendar")
+                .font(.system(size: 12, weight: .medium))
+            Text(date.formatted(date: .abbreviated, time: .shortened))
+                .font(.system(size: 13, weight: .medium))
+            Button { dueDate = nil } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.5))
+            }
+            .buttonStyle(.plain)
         }
-        titleFocused = true
+        .foregroundStyle(Theme.accent)
+        .padding(.leading, 31)
     }
 
     private func saveReminder() {
         let trimmedTitle = title.trimmingCharacters(in: .whitespaces)
         guard !trimmedTitle.isEmpty else { return }
-
         do {
             try remindersService.save(
                 title: trimmedTitle,
@@ -115,7 +117,13 @@ struct QuickReminderView: View {
             )
             PanelController.shared.hide()
         } catch {
-            showSaveError = true
+            withAnimation(.easeOut(duration: 0.2)) {
+                saveErrorText = error.localizedDescription
+            }
+            NSSound.beep()
+            if !remindersService.hasAccess {
+                Task { await remindersService.requestAccess() }
+            }
         }
     }
 
@@ -125,7 +133,6 @@ struct QuickReminderView: View {
         dueDate = nil
         flagged = false
         locationText = ""
-        showSaveError = false
+        saveErrorText = nil
     }
 }
-

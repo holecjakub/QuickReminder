@@ -22,7 +22,7 @@ struct ListPickerMenu: View {
                 } label: {
                     HStack {
                         Circle()
-                            .fill(Color(cgColor: cal.cgColor))
+                            .fill(cal.cgColor.map(Color.init(cgColor:)) ?? .gray)
                             .frame(width: 10, height: 10)
                         Text(cal.title)
                             .font(.system(size: 15))

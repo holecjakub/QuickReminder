@@ -11,17 +11,33 @@ final class RemindersService: ObservableObject {
     @Published var accessGranted = false
     @Published var accessDenied = false
 
-    private init() {}
+    private init() {
+        NotificationCenter.default.addObserver(
+            forName: .EKEventStoreChanged, object: store, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.accessGranted else { return }
+                self.loadCalendars()
+            }
+        }
+    }
+
+    var hasAccess: Bool {
+        EKEventStore.authorizationStatus(for: .reminder) == .fullAccess
+    }
 
     func requestAccess() async {
+        NSLog("QuickReminder: reminders authorization status before request = %d", EKEventStore.authorizationStatus(for: .reminder).rawValue)
         do {
             let granted = try await store.requestFullAccessToReminders()
+            NSLog("QuickReminder: requestFullAccessToReminders granted=%d status=%d", granted ? 1 : 0, EKEventStore.authorizationStatus(for: .reminder).rawValue)
             accessGranted = granted
             accessDenied = !granted
             if granted {
                 loadCalendars()
             }
         } catch {
+            NSLog("QuickReminder: requestFullAccessToReminders failed: %@", String(describing: error))
             accessDenied = true
         }
     }
@@ -43,6 +59,7 @@ final class RemindersService: ObservableObject {
         flagged: Bool,
         location: String?
     ) throws {
+        guard hasAccess else { throw SaveError.noAccess }
         let reminder = EKReminder(eventStore: store)
         reminder.title = title
         reminder.notes = buildNotes(notes: notes, location: location)
@@ -63,6 +80,15 @@ final class RemindersService: ObservableObject {
         }
 
         try store.save(reminder, commit: true)
+    }
+
+    enum SaveError: LocalizedError {
+        case noAccess
+        var errorDescription: String? {
+            switch self {
+            case .noAccess: "Allow Reminders access in System Settings → Privacy & Security."
+            }
+        }
     }
 
     private func buildNotes(notes: String, location: String?) -> String? {
