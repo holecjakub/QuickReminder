@@ -8,8 +8,9 @@ struct QuickReminderView: View {
     let notchBandHeight: CGFloat
     /// Geometry namespace shared with the saved badge (the ✓ flies into the notch on save).
     let saveNamespace: Namespace.ID
-    /// True while the saved choreography runs; the save button hands its geometry to the badge.
-    let isSaving: Bool
+    /// True from the moment of saving until the window is ordered out: the save button has
+    /// handed its geometry to the saved badge and must stay out of the hierarchy.
+    let saveButtonYielded: Bool
     @ObservedObject private var remindersService = RemindersService.shared
     @AppStorage("selectedListId") private var selectedListId: String = ""
 
@@ -81,7 +82,7 @@ struct QuickReminderView: View {
                 showLocationField: $showLocationField,
                 showCustomDatePicker: $showCustomDatePicker,
                 saveNamespace: saveNamespace,
-                isSaving: isSaving
+                saveButtonYielded: saveButtonYielded
             )
             .padding(.bottom, 22)
         }
@@ -199,6 +200,7 @@ struct QuickReminderView: View {
     }
 
     private func saveReminder() {
+        guard !saveButtonYielded else { return }   // already saved; the ✓ is flying
         // Like iOS Reminders: an un-dismissed date phrase is applied automatically on save.
         if dueDate == nil, suggestion != nil { applySuggestionIfAny() }
         let trimmedTitle = title.trimmingCharacters(in: .whitespaces)

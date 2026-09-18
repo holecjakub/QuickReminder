@@ -61,7 +61,7 @@ enum NotchLayout {
     /// Panel → saved pill (shape + ✓ flight).
     static let savingAnimation: Animation = .spring(response: 0.45, dampingFraction: 0.82, blendDuration: 0)
     /// How long the saved pill stays before the notch returns to normal.
-    static let savedHold: TimeInterval = 1.15
+    static let savedHold: TimeInterval = 1.0
 
     /// Spring used when the panel expands out of the notch.
     static let openAnimation: Animation = .spring(response: 0.42, dampingFraction: 0.78, blendDuration: 0)

@@ -31,16 +31,28 @@ final class PanelController {
     // MARK: - Public
 
     func toggle() {
-        if isVisible { hide() } else { show() }
+        if isVisible && !state.isSaving { hide() } else { show() }
     }
 
     func show() {
-        guard !isVisible else { return }
+        // Re-opening during the "saved" hold counts as a reopen from the pill.
+        let reopeningFromSaved = isVisible && state.isSaving
+        guard !isVisible || reopeningFromSaved else { return }
         // Re-opening while the collapse animation is still running: don't snap
         // back to the notch, just reverse from wherever the shape currently is.
-        let wasClosing = closeTask != nil
+        let wasClosing = closeTask != nil || reopeningFromSaved
         closeTask?.cancel()
         closeTask = nil
+        saveTask?.cancel()
+        saveTask = nil
+        // The badge (if any) is invisible or about to be; drop it and give the ✓ button its
+        // geometry back without animating either.
+        var noAnimation = Transaction()
+        noAnimation.disablesAnimations = true
+        withTransaction(noAnimation) {
+            state.savedBadgeShown = false
+            state.isSaving = false
+        }
 
         let screen = targetScreen()
         configureGeometry(for: screen)
@@ -129,14 +141,17 @@ final class PanelController {
     /// wider at the sides, the ✓ flies into the right-hand extension and draws itself in,
     /// then the notch returns to its normal size.
     func collapseAfterSave() {
-        guard isVisible, let window else { return }
+        guard isVisible, !state.isSaving, let window else { return }
         if NotchLayout.reduceMotion {
             hide()
             return
         }
-        // Input is done; nothing should be clickable during the choreography.
+        // Input is done: no clicks, no keystrokes into the invisible field, and the
+        // settle timer from show() must not drop the mask mid-choreography.
         removeLocalEventMonitor()
         window.ignoresMouseEvents = true
+        window.makeFirstResponder(nil)
+        openGeneration = UUID()
         state.isSettled = false
         withAnimation(NotchLayout.contentOutAnimation) { state.contentVisible = false }
         withAnimation(NotchLayout.savingAnimation) {

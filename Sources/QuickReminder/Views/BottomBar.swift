@@ -11,7 +11,7 @@ struct BottomBar: View {
     @Binding var showLocationField: Bool
     @Binding var showCustomDatePicker: Bool
     let saveNamespace: Namespace.ID
-    let isSaving: Bool
+    let saveButtonYielded: Bool
 
     private let iconSize: CGFloat = 22
     private let hitSize: CGFloat = 38
@@ -112,7 +112,7 @@ struct BottomBar: View {
 
     private var saveButton: some View {
         Group {
-            if isSaving {
+            if saveButtonYielded {
                 // The badge in NotchContainerView owns the geometry now; keep the slot.
                 Color.clear.frame(width: 48, height: 48)
             } else {
