@@ -6,11 +6,6 @@ options:
   xcodeVersion: "26.5"
   generateEmptyDirectories: true
 
-packages:
-  KeyboardShortcuts:
-    url: https://github.com/sindresorhus/KeyboardShortcuts
-    from: 2.4.0
-
 targets:
   QuickReminder:
     type: application
@@ -26,14 +21,20 @@ targets:
       properties:
         CFBundleShortVersionString: "1.0"
         CFBundleVersion: "1"
+        LSMinimumSystemVersion: "26.0"
         LSUIElement: true
+        NSHighResolutionCapable: true
         NSPrincipalClass: NSApplication
         NSRemindersFullAccessUsageDescription: "QuickReminder needs access to Reminders so you can quickly capture tasks from the floating overlay."
         NSRemindersUsageDescription: "QuickReminder needs access to Reminders so you can quickly capture tasks from the floating overlay."
-    entitlements:
-      path: Resources/QuickReminder.entitlements
-      properties:
-        com.apple.security.personal-information.reminders: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.jholec.QuickReminder
+            CFBundleURLSchemes:
+              - quickreminder
+    # Intentionally NOT sandboxed: with com.apple.security.app-sandbox the EventKit XPC
+    # connection fails on this machine (macOS 26.6 / Xcode 27, NSMachErrorDomain 4099) and the
+    # Reminders TCC prompt never appears. Hardened runtime is applied by build.sh.
+    # See PRs/2026-09-18-notch-review.md finding 1.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jholec.QuickReminder
@@ -45,5 +46,3 @@ targets:
         CODE_SIGN_IDENTITY: "Apple Development"
         ENABLE_HARDENED_RUNTIME: YES
         SWIFT_STRICT_CONCURRENCY: complete
-    dependencies:
-      - package: KeyboardShortcuts

@@ -16,9 +16,24 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.jholec.QuickReminder</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>quickreminder</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
 	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
