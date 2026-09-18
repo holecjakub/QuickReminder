@@ -6,6 +6,10 @@ import SwiftUI
 struct QuickReminderView: View {
     /// Height of the notch / menu-bar band the content must stay below.
     let notchBandHeight: CGFloat
+    /// Geometry namespace shared with the saved badge (the ✓ flies into the notch on save).
+    let saveNamespace: Namespace.ID
+    /// True while the saved choreography runs; the save button hands its geometry to the badge.
+    let isSaving: Bool
     @ObservedObject private var remindersService = RemindersService.shared
     @AppStorage("selectedListId") private var selectedListId: String = ""
 
@@ -75,7 +79,9 @@ struct QuickReminderView: View {
                 canSave: canSave,
                 onSave: saveReminder,
                 showLocationField: $showLocationField,
-                showCustomDatePicker: $showCustomDatePicker
+                showCustomDatePicker: $showCustomDatePicker,
+                saveNamespace: saveNamespace,
+                isSaving: isSaving
             )
             .padding(.bottom, 22)
         }
@@ -206,7 +212,7 @@ struct QuickReminderView: View {
                 flagged: flagged,
                 location: locationText.isEmpty ? nil : locationText
             )
-            PanelController.shared.hide()
+            PanelController.shared.collapseAfterSave()
         } catch {
             withAnimation(.easeOut(duration: 0.2)) {
                 saveErrorText = error.localizedDescription

@@ -99,12 +99,17 @@ final class PanelController {
     func hide() {
         guard isVisible, let window else { return }
         isVisible = false
+        saveTask?.cancel()
+        saveTask = nil
         NotificationCenter.default.post(name: .panelDidHide, object: nil)
 
         removeLocalEventMonitor()
         state.isSettled = false
         withAnimation(NotchLayout.effectiveContentOut) { state.contentVisible = false }
-        withAnimation(NotchLayout.effectiveClose) { state.isOpen = false }
+        withAnimation(NotchLayout.effectiveClose) {
+            state.isOpen = false
+            state.isSaving = false
+        }
 
         closeTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(NotchLayout.closeDuration))
@@ -114,6 +119,34 @@ final class PanelController {
             self.closeTask = nil
         }
     }
+
+    /// Reminders-style "saved" choreography: the panel collapses to notch height but stays
+    /// wider at the sides, the ✓ flies into the right-hand extension and draws itself in,
+    /// then the notch returns to its normal size.
+    func collapseAfterSave() {
+        guard isVisible, let window else { return }
+        if NotchLayout.reduceMotion {
+            hide()
+            return
+        }
+        // Input is done; nothing should be clickable during the choreography.
+        removeLocalEventMonitor()
+        window.ignoresMouseEvents = true
+        state.isSettled = false
+        withAnimation(NotchLayout.contentOutAnimation) { state.contentVisible = false }
+        withAnimation(NotchLayout.savingAnimation) {
+            state.isOpen = false
+            state.isSaving = true
+        }
+        saveTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(NotchLayout.savedHold))
+            guard !Task.isCancelled, let self, self.isVisible else { return }
+            self.saveTask = nil
+            self.hide()
+        }
+    }
+
+    private var saveTask: Task<Void, Never>?
 
     // MARK: - Window & geometry
 

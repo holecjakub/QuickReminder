@@ -6,6 +6,8 @@ import SwiftUI
 struct NotchContainerView: View {
     @EnvironmentObject private var state: NotchState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Shared between the save button and the saved badge so the ✓ flies between them.
+    @Namespace private var saveNamespace
 
     private var silhouette: NotchShape {
         NotchShape(
@@ -22,7 +24,11 @@ struct NotchContainerView: View {
                 .fill(Color.black)
                 .frame(width: state.currentSize.width, height: state.currentSize.height)
 
-            QuickReminderView(notchBandHeight: state.notchBandHeight)
+            QuickReminderView(
+                notchBandHeight: state.notchBandHeight,
+                saveNamespace: saveNamespace,
+                isSaving: state.isSaving
+            )
                 .frame(width: state.openSize.width, height: state.openSize.height)
                 .opacity(state.contentVisible ? 1 : 0)
                 .blur(radius: state.contentVisible || reduceMotion ? 0 : 8)
@@ -42,6 +48,16 @@ struct NotchContainerView: View {
                         }
                     }
                 )
+
+            // "Saved" badge: lands in the right-hand extension of the collapsed notch.
+            if state.isSaving {
+                SavedCheckView()
+                    .matchedGeometryEffect(id: "save", in: saveNamespace)
+                    .frame(width: state.savedSize.width, height: state.savedSize.height, alignment: .trailing)
+                    .padding(.trailing, (NotchLayout.savedExtension - NotchLayout.savedBadgeSize) / 2 + NotchLayout.closedTopRadius / 2)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
         }
         .frame(width: NotchLayout.canvasSize.width, height: NotchLayout.canvasSize.height, alignment: .top)
     }

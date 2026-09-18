@@ -12,6 +12,9 @@ final class NotchState: ObservableObject {
     /// True once the open spring has settled; the content mask is dropped then (it forces
     /// offscreen rendering of the whole panel on every repaint while attached).
     @Published var isSettled: Bool = false
+    /// "Saved" phase: the silhouette collapses to notch height but stays wider at the sides
+    /// while the ✓ flies into the right-hand extension and plays its done animation.
+    @Published var isSaving: Bool = false
 
     /// Size of the collapsed silhouette. Slightly larger than the physical notch so
     /// anti-aliased edges never peek out around the bezel.
@@ -22,7 +25,15 @@ final class NotchState: ObservableObject {
     /// Height of the band occupied by the physical notch / menu bar at the top of the panel.
     var notchBandHeight: CGFloat { closedSize.height }
 
-    var currentSize: CGSize { isOpen ? openSize : closedSize }
+    var currentSize: CGSize {
+        if isSaving { return savedSize }
+        return isOpen ? openSize : closedSize
+    }
+
+    /// Notch height, widened by `NotchLayout.savedExtension` on each side.
+    var savedSize: CGSize {
+        CGSize(width: closedSize.width + 2 * NotchLayout.savedExtension, height: closedSize.height)
+    }
 }
 
 /// Layout constants for the expanded quick-reminder panel.
@@ -39,6 +50,15 @@ enum NotchLayout {
     static let closedBottomRadius: CGFloat = NotchShape.Radius.closedBottom
     static let openTopRadius: CGFloat = NotchShape.Radius.openTop
     static let openBottomRadius: CGFloat = NotchShape.Radius.openBottom
+
+    /// Extra width on each side of the notch during the "saved" phase (room for the ✓ on the right).
+    static let savedExtension: CGFloat = 72
+    /// Diameter of the ✓ badge that lands in the right-hand extension.
+    static let savedBadgeSize: CGFloat = 24
+    /// Panel → saved pill (shape + ✓ flight).
+    static let savingAnimation: Animation = .spring(response: 0.45, dampingFraction: 0.82, blendDuration: 0)
+    /// How long the saved pill stays before the notch returns to normal.
+    static let savedHold: TimeInterval = 1.15
 
     /// Spring used when the panel expands out of the notch.
     static let openAnimation: Animation = .spring(response: 0.42, dampingFraction: 0.78, blendDuration: 0)

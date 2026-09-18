@@ -10,7 +10,8 @@ struct BottomBar: View {
 
     @Binding var showLocationField: Bool
     @Binding var showCustomDatePicker: Bool
-    @State private var saveScale: CGFloat = 1.0
+    let saveNamespace: Namespace.ID
+    let isSaving: Bool
 
     private let iconSize: CGFloat = 22
     private let hitSize: CGFloat = 38
@@ -110,23 +111,30 @@ struct BottomBar: View {
     // MARK: Save
 
     private var saveButton: some View {
-        Button(action: handleSave) {
-            ZStack {
-                Circle()
-                    .fill(canSave ? Theme.accent : Theme.grayCircleDisabled)
-                Image(systemName: "checkmark")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.white)
+        Group {
+            if isSaving {
+                // The badge in NotchContainerView owns the geometry now; keep the slot.
+                Color.clear.frame(width: 48, height: 48)
+            } else {
+                Button(action: handleSave) {
+                    ZStack {
+                        Circle()
+                            .fill(canSave ? Theme.accent : Theme.grayCircleDisabled)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                    .frame(width: 48, height: 48)
+                    .contentShape(Circle())
+                }
+                .buttonStyle(HoverButtonStyle())
+                .matchedGeometryEffect(id: "save", in: saveNamespace)
+                .disabled(!canSave)
+                .animation(.easeInOut(duration: 0.18), value: canSave)
+                .accessibilityLabel("Save reminder")
+                .keyboardShortcut(.return, modifiers: .command)
             }
-            .frame(width: 48, height: 48)
-            .contentShape(Circle())
         }
-        .buttonStyle(HoverButtonStyle())
-        .scaleEffect(saveScale)
-        .disabled(!canSave)
-        .animation(.easeInOut(duration: 0.18), value: canSave)
-        .accessibilityLabel("Save reminder")
-        .keyboardShortcut(.return, modifiers: .command)
     }
 
     private var locationPopover: some View {
@@ -147,10 +155,6 @@ struct BottomBar: View {
 
     private func handleSave() {
         guard canSave else { return }
-        withAnimation(.spring(response: 0.22, dampingFraction: 0.55)) { saveScale = 1.08 }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) { saveScale = 1.0 }
-        }
         onSave()
     }
 
