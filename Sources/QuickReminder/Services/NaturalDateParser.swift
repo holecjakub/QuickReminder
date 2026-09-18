@@ -29,20 +29,37 @@ struct DateSuggestion: Equatable, Sendable {
 ///   "iPhone 17" and "call 5 people" produce no match.
 /// * **Ambiguous hours**: without am/pm or a day-part word, hours 1…6 are read as PM
 ///   ("at 3" → 15:00, "v půl třetí" → 14:30) while 7…12 are taken literally ("at 9" → 09:00).
+///   An adjacent evening/afternoon day part overrides that for a bare hour below 12, so
+///   "tonight at 8" is 20:00. Hour 12 is left alone even next to an evening word — "v 12 večer"
+///   stays 12:00, because both readings (noon, midnight) are guesses and noon is the safer one.
 /// * **Slash dates** (`3/12`) are read as month/day for English text and day/month when the
 ///   text carries Czech signals (Czech diacritics or a Czech word). Dotted dates (`3.12.`)
 ///   are always day/month.
-/// * **Missing year** → the next occurrence: this year if it has not passed, otherwise next year.
+/// * **Invalid calendar dates never roll over.** "31. února" / "30.2." produce no match at all
+///   instead of silently becoming March. "29.2." with no year walks forward to the next leap
+///   year (2028). A written-out year must be a `20xx` within ±10 years of `now`, so
+///   "12 March 1000 items" reads as a plain March 12 and "1000" stays in the title.
+/// * **Missing year** → the first valid occurrence from this year up to +8 years that is not
+///   in the past.
 /// * **Time without a day** that already lies in the past today rolls over to tomorrow.
 /// * Day-sized relative offsets ("in 3 days", "za týden") return the start of that day with
-///   `hasTime == false`; hour/minute offsets keep the exact time.
+///   `hasTime == false`; hour/minute offsets keep the exact time. A day-sized offset merges
+///   with an adjacent time ("in 2 days at 3pm").
 /// * Only the RIGHT-MOST phrase is returned, so "Call mom tomorrow 2pm" strips the tail.
+///   A time only merges with a day that is directly ADJACENT to it, so in "tomorrow buy milk
+///   at 2pm" the 2pm is resolved on its own (today/tomorrow by clock) and "tomorrow" stays in
+///   the title. Keeping the merge strictly adjacent is what makes the stripped title predictable.
 enum NaturalDateParser {
 
     // MARK: - Public API
 
     /// Finds the LAST (right-most) date/time phrase in `text`. Returns nil if none.
+    /// Only the right-most phrase matters, and the parser runs on every keystroke on the main
+    /// thread, so pathological pastes are cut off instead of stalling the UI.
+    static let maxLengthUTF16 = 1_000
+
     static func parse(_ text: String, now: Date = Date(), calendar: Calendar = .current) -> DateSuggestion? {
+        guard text.utf16.count <= maxLengthUTF16 else { return nil }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         let normalized = normalize(text)
         let czech = looksCzech(original: text, normalized: normalized)
@@ -67,9 +84,10 @@ enum NaturalDateParser {
             hasTime = offsetHasTime
 
         case let .time(time):
-            if let previous, case let .day(day) = previous.payload, adjacent(previous.range, range, in: normalized) {
+            if let previous, adjacent(previous.range, range, in: normalized),
+               let day = dayBase(of: previous.payload, calendar: calendar) {
                 range = union(previous.range, range)
-                date = apply(time, to: day.startOfDay, calendar: calendar)
+                date = merge(time, with: day, calendar: calendar)
             } else {
                 date = timeOnly(time, now: now, calendar: calendar)
             }
@@ -78,7 +96,7 @@ enum NaturalDateParser {
         case let .day(day):
             if let previous, case let .time(time) = previous.payload, adjacent(previous.range, range, in: normalized) {
                 range = union(previous.range, range)
-                date = apply(time, to: day.startOfDay, calendar: calendar)
+                date = merge(time, with: day, calendar: calendar)
                 hasTime = true
             } else if let implied = day.impliedTime {
                 date = apply(implied, to: day.startOfDay, calendar: calendar)
@@ -96,21 +114,33 @@ enum NaturalDateParser {
                               matchedText: String(text[swiftRange]))
     }
 
-    /// Returns `text` with the matched phrase removed, surrounding whitespace collapsed and
-    /// dangling connectors trimmed.
+    /// Returns `text` with the matched phrase removed and whitespace collapsed.
+    ///
+    /// Only the single word directly BEFORE the removed range is dropped, and only when it is a
+    /// preposition left dangling by the removal ("Review this by friday" → "Review this",
+    /// "odevzdat do 5. prosince" → "odevzdat"). Words that carry meaning in a title — "this",
+    /// "the", "next", "in" — are always kept, so "check in tomorrow" stays "check in".
+    /// Punctuation orphaned by the removal is dropped as well: "Buy milk, tomorrow" → "Buy milk".
     static func removingMatch(from text: String, suggestion: DateSuggestion) -> String {
-        var stripped = text
-        stripped.removeSubrange(suggestion.matchedRange)
-        var words = stripped.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        let head = String(text[text.startIndex..<suggestion.matchedRange.lowerBound])
+        var tail = Substring(text[suggestion.matchedRange.upperBound...])
 
-        func isDangling(_ word: String) -> Bool {
-            let bare = word.trimmingCharacters(in: danglingPunctuation)
-            if bare.isEmpty { return true }
-            return connectorWords.contains(normalize(bare))
+        // "ve 14.30." leaves a lone "." behind; so does "tomorrow, buy milk".
+        while let first = tail.first, first.isWhitespace || danglingPunctuation.contains(first) {
+            tail.removeFirst()
         }
 
-        while let last = words.last, isDangling(last) { words.removeLast() }
-        while let first = words.first, isDangling(first) { words.removeFirst() }
+        var words = head.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        if let last = words.last {
+            let bare = bareWord(last)
+            if bare.isEmpty || danglingPrepositions.contains(normalize(bare)) { words.removeLast() }
+        }
+        words += tail.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+
+        if let last = words.last {
+            let trimmed = trimmingTrailingPunctuation(last)
+            if trimmed.isEmpty { words.removeLast() } else { words[words.count - 1] = trimmed }
+        }
 
         return words.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -120,6 +150,10 @@ enum NaturalDateParser {
     private struct TimeInfo {
         var hour: Int
         var minute: Int
+        /// `false` only for a bare hour ("at 8") that nothing in the phrase pinned down —
+        /// no am/pm, no minutes, no day-part suffix. Such an hour may still be pushed into
+        /// the evening by an adjacent day part ("tonight at 8" → 20:00).
+        var explicit: Bool = true
     }
 
     private struct DayInfo {
@@ -142,6 +176,10 @@ enum NaturalDateParser {
     /// Lowercases and strips diacritics while guaranteeing the UTF-16 length is preserved,
     /// so ranges found in the normalised string are valid in the original one.
     private static func normalize(_ text: String) -> String {
+        // Fast path: fold the whole string at once; fall back to per-character folding only when
+        // some character would change its UTF-16 length (the range mapping depends on it).
+        let whole = text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
+        if whole.utf16.count == text.utf16.count { return whole }
         var out = String()
         out.reserveCapacity(text.count)
         for character in text {
@@ -152,12 +190,30 @@ enum NaturalDateParser {
         return out
     }
 
-    private static let danglingPunctuation = CharacterSet(charactersIn: ",.;:!?-–—()[]{}\"'")
-
-    private static let connectorWords: Set<String> = [
-        "at", "on", "in", "by", "the", "this", "next", "for",
-        "v", "ve", "o", "za", "na", "do", "pristi", "priste", "tento", "tuto", "toto", "-", "–", "—"
+    private static let danglingPunctuation: Set<Character> = [
+        ",", ".", ";", ":", "!", "?", "-", "–", "—", "(", ")", "[", "]", "{", "}", "\"", "'"
     ]
+
+    /// Words that are meaningless on their own once the date phrase after them is gone.
+    /// Deliberately NO determiners or adverbs ("the", "this", "next", "in", "tento", "příští"):
+    /// those are ordinary title words and removing them mangled titles like "check in tomorrow".
+    private static let danglingPrepositions: Set<String> = [
+        "at", "on", "by", "for", "until", "till",
+        "v", "ve", "o", "do", "na", "za", "od"
+    ]
+
+    private static func bareWord(_ word: String) -> String {
+        var slice = Substring(word)
+        while let first = slice.first, danglingPunctuation.contains(first) { slice.removeFirst() }
+        while let last = slice.last, danglingPunctuation.contains(last) { slice.removeLast() }
+        return String(slice)
+    }
+
+    private static func trimmingTrailingPunctuation(_ word: String) -> String {
+        var trimmed = Substring(word)
+        while let last = trimmed.last, danglingPunctuation.contains(last) { trimmed.removeLast() }
+        return String(trimmed)
+    }
 
     private static let czechHintWords: Set<String> = [
         "zitra", "zejtra", "dnes", "dneska", "pozitri", "vcera",
@@ -169,8 +225,10 @@ enum NaturalDateParser {
         "pristi", "tento", "tuto", "ve", "za", "schuzka", "zubar", "lekar", "koupit", "zavolat", "napsat"
     ]
 
+    private static let czechDiacritics = Set("áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ")
+
     private static func looksCzech(original: String, normalized: String) -> Bool {
-        if original.contains(where: { "áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ".contains($0) }) { return true }
+        if original.contains(where: { czechDiacritics.contains($0) }) { return true }
         let words = normalized.split(whereSeparator: { !$0.isLetter })
         return words.contains { czechHintWords.contains(String($0)) }
     }
@@ -280,7 +338,8 @@ enum NaturalDateParser {
         "midnight": TimeInfo(hour: 0, minute: 0),
         "morning": TimeInfo(hour: 9, minute: 0),
         "afternoon": TimeInfo(hour: 15, minute: 0),
-        "evening": TimeInfo(hour: 19, minute: 0)
+        "evening": TimeInfo(hour: 19, minute: 0),
+        "night": TimeInfo(hour: 20, minute: 0)
     ]
 
     // MARK: - Compiled patterns
@@ -304,26 +363,30 @@ enum NaturalDateParser {
         + boundaryAfter
     )
 
+    /// A written-out year is only accepted in this century; `resolveDate` narrows it further
+    /// to ±10 years of `now`, so stray numbers ("12 March 1000 items") never become years.
+    private static let yearPattern = "20\\d{2}"
+
     /// "12.3.", "12. 3.", "12.3.2026"
     private static let dottedDateRegex = makeRegex(
-        "(?<![\\p{L}\\d.])(\\d{1,2})\\.\\s?(\\d{1,2})\\.(?:\\s?(\\d{4}))?(?![\\d])"
+        "(?<![\\p{L}\\d.])(\\d{1,2})\\.\\s?(\\d{1,2})\\.(?:\\s?(" + yearPattern + "))?(?![\\d])"
     )
 
     /// "3/12", "3/12/2026"
     private static let slashDateRegex = makeRegex(
-        "(?<![\\p{L}\\d/])(\\d{1,2})/(\\d{1,2})(?:/(\\d{4}))?(?![\\d/])"
+        "(?<![\\p{L}\\d/])(\\d{1,2})/(\\d{1,2})(?:/(" + yearPattern + "))?(?![\\d/])"
     )
 
     /// "12 March", "12. března", "12 March 2027"
     private static let dayMonthRegex = makeRegex(
         "(?<![\\p{L}\\d])(\\d{1,2})\\.?\\s+(" + monthAlternation + ")" + boundaryAfter
-        + "(?:\\s+(\\d{4}))?"
+        + "(?:\\s+(" + yearPattern + ")(?!\\d))?"
     )
 
     /// "March 12", "Mar 12th", "March 12, 2027"
     private static let monthDayRegex = makeRegex(
         boundaryBefore + "(" + monthAlternation + ")\\s+(\\d{1,2})(?:st|nd|rd|th)?(?![\\p{L}\\d])"
-        + "(?:,?\\s+(\\d{4}))?"
+        + "(?:,?\\s+(" + yearPattern + ")(?!\\d))?"
     )
 
     private static let timeWordRegex = makeRegex(
@@ -332,20 +395,31 @@ enum NaturalDateParser {
         + "|(?:at\\s+)?(noon|midnight)"
         + "|(?:v\\s+)?(poledne)"
         + "|(?:o\\s+)?(pulnoci|pulnoc)"
-        + "|(rano|dopoledne|odpoledne|vecera|vecer))"
+        + "|(rano|dopoledne|odpoledne|vecera|vecer)"
+        + "|(morning|afternoon|evening|night))"
         + boundaryAfter
     )
 
-    /// "v půl třetí" → 14:30
+    /// The day-part suffix shared by the numeric and half-hour time patterns ("ve 2 odpoledne",
+    /// "půl třetí odpoledne", "at 3 in the afternoon").
+    private static let dayPartSuffixPattern =
+        "(rano|dopoledne|odpoledne|vecera|vecer|morning|afternoon|evening|night"
+        + "|in\\s+the\\s+morning|in\\s+the\\s+afternoon|in\\s+the\\s+evening)" + boundaryAfter
+
+    /// "v půl třetí", "půl třetí odpoledne" → 14:30
     private static let halfHourRegex = makeRegex(
         boundaryBefore + "(?:v\\s+)?pul\\s+(" + czechHalfOrdinals.keys.sorted { $0.count > $1.count }.joined(separator: "|") + ")" + boundaryAfter
+        + "(?:\\s+" + dayPartSuffixPattern + ")?"
     )
 
     /// 1: at/v/ve  2: hour  3: minutes after ':'  4: minutes after '.'  5: am/pm  6: day-part suffix
+    ///
+    /// The minute lookahead `(?!\d|\.\d)` tolerates a sentence-final period ("ve 14.30.") while
+    /// still refusing the middle of a dotted date ("12.30.2026").
     private static let numericTimeRegex = makeRegex(
-        "(?<![\\p{L}\\d])(?:(at|v|ve)\\s+)?(\\d{1,2})(?::(\\d{2})|\\.(\\d{2})(?![\\d.]))?(?!\\d)"
+        "(?<![\\p{L}\\d])(?:(at|v|ve)\\s+)?(\\d{1,2})(?::(\\d{2})|\\.(\\d{2})(?!\\d|\\.\\d))?(?!\\d)"
         + "(?:\\s*(am|pm)(?![\\p{L}]))?"
-        + "(?:\\s+(rano|dopoledne|odpoledne|vecera|vecer|in\\s+the\\s+morning|in\\s+the\\s+afternoon|in\\s+the\\s+evening))?"
+        + "(?:\\s+" + dayPartSuffixPattern + ")?"
     )
 
     private static let englishOffsetRegex = makeRegex(
@@ -456,24 +530,40 @@ enum NaturalDateParser {
         return calendar.date(byAdding: .day, value: delta, to: today) ?? today
     }
 
+    /// How far ahead a day/month with no year may look for a valid occurrence — enough to reach
+    /// the next leap day from any starting year ("29.2." → 2028-02-29).
+    private static let yearSearchSpan = 8
+    /// How far a written-out year may sit from today before it is treated as a stray number.
+    private static let yearWindow = 10
+
+    /// Resolves a day/month(/year) triple, or nil when the combination is not a real date.
+    /// The components are round-tripped through the calendar so "31. února" is rejected rather
+    /// than silently rolled over into March.
     private static func resolveDate(day: Int, month: Int, year: Int?, now: Date, calendar: Calendar) -> Date? {
         guard (1...12).contains(month), (1...31).contains(day) else { return nil }
         let today = calendar.startOfDay(for: now)
-        var components = DateComponents()
-        components.day = day
-        components.month = month
+        let thisYear = calendar.component(.year, from: today)
 
-        if let year {
+        func exactDate(in year: Int) -> Date? {
+            var components = DateComponents()
             components.year = year
-            return calendar.date(from: components).map { calendar.startOfDay(for: $0) }
+            components.month = month
+            components.day = day
+            guard let date = calendar.date(from: components) else { return nil }
+            let roundTrip = calendar.dateComponents([.year, .month, .day], from: date)
+            guard roundTrip.year == year, roundTrip.month == month, roundTrip.day == day else { return nil }
+            return calendar.startOfDay(for: date)
         }
 
-        let thisYear = calendar.component(.year, from: today)
-        components.year = thisYear
-        guard let candidate = calendar.date(from: components).map({ calendar.startOfDay(for: $0) }) else { return nil }
-        if candidate >= today { return candidate }
-        components.year = thisYear + 1
-        return calendar.date(from: components).map { calendar.startOfDay(for: $0) }
+        if let year {
+            guard abs(year - thisYear) <= yearWindow else { return nil }
+            return exactDate(in: year)
+        }
+
+        for offset in 0...yearSearchSpan {
+            if let candidate = exactDate(in: thisYear + offset), candidate >= today { return candidate }
+        }
+        return nil
     }
 
     // MARK: - Time candidates
@@ -498,22 +588,21 @@ enum NaturalDateParser {
                 if meridiem == "pm" { hour = hour == 12 ? 12 : hour + 12 }
                 if meridiem == "am" { hour = hour == 12 ? 0 : hour }
             } else if let suffix {
-                let key = suffix.contains("afternoon") ? "odpoledne"
-                    : suffix.contains("evening") ? "vecer"
-                    : suffix.contains("morning") ? "rano"
-                    : suffix
-                if (key == "odpoledne" || key == "vecer" || key == "vecera"), hour < 12 { hour += 12 }
+                hour = shifted(hour, by: suffix)
             } else {
                 hour = disambiguate(hour)
             }
             guard hour <= 23 else { continue }
-            found.append(Candidate(range: match.range, payload: .time(TimeInfo(hour: hour, minute: minute))))
+            let explicit = meridiem != nil || minuteText != nil || suffix != nil
+            found.append(Candidate(range: match.range,
+                                   payload: .time(TimeInfo(hour: hour, minute: minute, explicit: explicit))))
         }
 
         for match in matches(halfHourRegex, text) {
             guard let name = group(match, 1, in: text), let ordinal = czechHalfOrdinals[name] else { continue }
             // "půl jedné" is half past twelve, otherwise "půl N" is half past N-1.
-            let hour = ordinal == 1 ? 12 : disambiguate(ordinal - 1)
+            var hour = ordinal == 1 ? 12 : disambiguate(ordinal - 1)
+            if let suffix = group(match, 2, in: text) { hour = shifted(hour, by: suffix) }
             found.append(Candidate(range: match.range, payload: .time(TimeInfo(hour: hour, minute: 30))))
         }
 
@@ -534,8 +623,51 @@ enum NaturalDateParser {
         (1...6).contains(hour) ? hour + 12 : hour
     }
 
+    /// Maps a day-part suffix ("odpoledne", "in the evening", "night") onto its table key.
+    private static func dayPartKey(_ suffix: String) -> String? {
+        for key in ["afternoon", "evening", "morning", "night"] where suffix.contains(key) {
+            switch key {
+            case "afternoon": return "odpoledne"
+            case "evening", "night": return "vecer"
+            default: return "rano"
+            }
+        }
+        return dayPartTimes[suffix] != nil ? suffix : nil
+    }
+
+    /// "ve 2 odpoledne" → 14. Hour 12 is left alone: see the type doc.
+    private static func shifted(_ hour: Int, by suffix: String) -> Int {
+        guard let key = dayPartKey(suffix), let part = dayPartTimes[key] else { return hour }
+        return (part.hour >= 12 && hour < 12) ? hour + 12 : hour
+    }
+
+    /// The day a time candidate can attach itself to, if the neighbouring candidate offers one.
+    private static func dayBase(of payload: Candidate.Payload, calendar: Calendar) -> DayInfo? {
+        switch payload {
+        case let .day(day):
+            return day
+        case let .offset(date, hasTime):
+            // "in 2 days at 3pm": a day-sized offset is just a day, so it merges like one.
+            return hasTime ? nil : DayInfo(startOfDay: calendar.startOfDay(for: date), impliedTime: nil)
+        case .time:
+            return nil
+        }
+    }
+
+    /// Applies a time to a day, letting an evening/afternoon day part disambiguate a bare hour.
+    private static func merge(_ time: TimeInfo, with day: DayInfo, calendar: Calendar) -> Date {
+        var time = time
+        if !time.explicit, time.hour < 12, let implied = day.impliedTime, implied.hour >= 12 {
+            time.hour += 12
+        }
+        return apply(time, to: day.startOfDay, calendar: calendar)
+    }
+
+    /// Uses `bySettingHour` so a time that does not exist on a DST spring-forward day moves to the
+    /// next valid instant instead of collapsing back to midnight.
     private static func apply(_ time: TimeInfo, to day: Date, calendar: Calendar) -> Date {
-        calendar.date(bySettingHour: time.hour, minute: time.minute, second: 0, of: day) ?? day
+        calendar.date(bySettingHour: time.hour, minute: time.minute, second: 0, of: day,
+                      matchingPolicy: .nextTime, repeatedTimePolicy: .first, direction: .forward) ?? day
     }
 
     private static func timeOnly(_ time: TimeInfo, now: Date, calendar: Calendar) -> Date {

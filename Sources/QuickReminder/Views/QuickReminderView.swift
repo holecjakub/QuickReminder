@@ -4,7 +4,8 @@ import SwiftUI
 /// (header → input → bottom bar), sitting below the notch band.
 @MainActor
 struct QuickReminderView: View {
-    @EnvironmentObject private var state: NotchState
+    /// Height of the notch / menu-bar band the content must stay below.
+    let notchBandHeight: CGFloat
     @ObservedObject private var remindersService = RemindersService.shared
     @AppStorage("selectedListId") private var selectedListId: String = ""
 
@@ -27,7 +28,7 @@ struct QuickReminderView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // The physical notch / menu-bar band. Content starts below it.
-            Color.clear.frame(height: state.notchBandHeight)
+            Color.clear.frame(height: notchBandHeight)
 
             HeaderView(
                 remindersService: remindersService,
@@ -93,13 +94,15 @@ struct QuickReminderView: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dueDate != nil)
         .animation(.easeOut(duration: 0.18), value: suggestion?.matchedText)
         .onChange(of: title) { _, newValue in updateSuggestion(for: newValue) }
+        .onChange(of: dueDate) { _, newValue in if newValue == nil { updateSuggestion(for: title) } }
     }
 
     // MARK: Natural-language date suggestion (Reminders-style, EN + CZ)
 
     private func updateSuggestion(for text: String) {
         guard dueDate == nil else { suggestion = nil; return }
-        let parsed = NaturalDateParser.parse(text)
+        let minute = Date().timeIntervalSinceReferenceDate.rounded(.down) // second precision is enough
+        let parsed = NaturalDateParser.parse(text, now: Date(timeIntervalSinceReferenceDate: minute))
         if let parsed, parsed.matchedText == dismissedSuggestionText {
             suggestion = nil
         } else {
@@ -114,7 +117,12 @@ struct QuickReminderView: View {
         guard let s = suggestion else { return false }
         var date = s.date
         if !s.hasTime {
-            date = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: date) ?? date
+            let cal = Calendar.current
+            date = cal.date(bySettingHour: 9, minute: 0, second: 0, of: date) ?? date
+            // "today" after 9:00 → next full hour instead of an alarm already in the past.
+            if date < Date() {
+                date = cal.nextDate(after: Date(), matching: DateComponents(minute: 0, second: 0), matchingPolicy: .nextTime) ?? date
+            }
         }
         let stripped = NaturalDateParser.removingMatch(from: title, suggestion: s)
         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {

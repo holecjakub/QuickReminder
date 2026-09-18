@@ -127,6 +127,77 @@ enum NaturalDateParserTests {
         expect("za týden", date(2026, 9, 25), hasTime: false)
         expect("za 2 týdny", date(2026, 10, 2), hasTime: false)
 
+        print("NaturalDateParser – invalid dates never roll over")
+        expectNil("30.2.")
+        expectNil("31. února")
+        expectNil("31. dubna")
+        expectNil("31 April")
+        // No year given → walk forward to the next year in which the date actually exists.
+        expect("29.2.", date(2028, 2, 29), hasTime: false)
+        // A stray number is not a year: "1000" stays in the title.
+        expect("12 March 1000 items", date(2027, 3, 12), hasTime: false, stripped: "1000 items")
+        // A written-out year further than ±10 years away is not a date at all.
+        expectNil("12.3.2040")
+
+        print("NaturalDateParser – sentence-final period after HH.MM")
+        expect("ve 14.30.", date(2026, 9, 18, 14, 30), hasTime: true, stripped: "")
+        expect("meeting at 14.30.", date(2026, 9, 18, 14, 30), hasTime: true, stripped: "meeting")
+
+        print("NaturalDateParser – English day parts")
+        expect("tomorrow evening", date(2026, 9, 19, 19, 0), hasTime: true, stripped: "")
+        expect("tomorrow morning", date(2026, 9, 19, 9, 0), hasTime: true, stripped: "")
+        expect("tomorrow night", date(2026, 9, 19, 20, 0), hasTime: true, stripped: "")
+        expect("call mom tomorrow evening", date(2026, 9, 19, 19, 0), hasTime: true, stripped: "call mom")
+        expect("friday afternoon", date(2026, 9, 25, 15, 0), hasTime: true, stripped: "")
+
+        print("NaturalDateParser – hour disambiguation with an evening context")
+        expect("tonight at 8", date(2026, 9, 18, 20, 0), hasTime: true, stripped: "")
+        expect("12am", date(2026, 9, 19, 0, 0), hasTime: true)
+        expect("12pm", date(2026, 9, 18, 12, 0), hasTime: true)
+        // "12 večer" is genuinely ambiguous (noon? midnight?), so 12 is left as written.
+        expect("v 12 večer", date(2026, 9, 18, 12, 0), hasTime: true, stripped: "")
+        expect("půl třetí odpoledne", date(2026, 9, 18, 14, 30), hasTime: true, stripped: "")
+
+        print("NaturalDateParser – offset merged with a time")
+        expect("in 2 days at 3pm", date(2026, 9, 20, 15, 0), hasTime: true, stripped: "")
+        expect("za 3 dny v 9 ráno", date(2026, 9, 21, 9, 0), hasTime: true, stripped: "")
+
+        print("NaturalDateParser – removingMatch keeps real title words")
+        expect("Fix this tomorrow", date(2026, 9, 19), hasTime: false, stripped: "Fix this")
+        expect("check in tomorrow", date(2026, 9, 19), hasTime: false, stripped: "check in")
+        expect("Log in at 3pm", date(2026, 9, 18, 15, 0), hasTime: true, stripped: "Log in")
+        expect("Buy milk, tomorrow", date(2026, 9, 19), hasTime: false, stripped: "Buy milk")
+        expect("Review this by friday", date(2026, 9, 25), hasTime: false, stripped: "Review this")
+        expect("The report tomorrow", date(2026, 9, 19), hasTime: false, stripped: "The report")
+        expect("odevzdat do 5. prosince", date(2026, 12, 5), hasTime: false, stripped: "odevzdat")
+
+        print("NaturalDateParser – DST spring forward (Europe/Prague)")
+        var prague = Calendar(identifier: .gregorian)
+        prague.timeZone = TimeZone(identifier: "Europe/Prague")!
+        var pragueNowComponents = DateComponents()
+        pragueNowComponents.year = 2026
+        pragueNowComponents.month = 9
+        pragueNowComponents.day = 18
+        pragueNowComponents.hour = 10
+        let pragueNow = prague.date(from: pragueNowComponents)!
+        // 2027-03-28 02:30 does not exist in Prague; the parser must move forward to 03:00
+        // rather than collapsing back to midnight.
+        if let suggestion = NaturalDateParser.parse("schůzka 28.3.2027 v 2:30 ráno", now: pragueNow, calendar: prague) {
+            var expected = DateComponents()
+            expected.year = 2027
+            expected.month = 3
+            expected.day = 28
+            expected.hour = 3
+            let target = prague.date(from: expected)!
+            check(suggestion.date == target,
+                  "DST gap time moves forward to 03:00 (got \(prague.dateComponents([.hour, .minute], from: suggestion.date)))")
+            check(suggestion.hasTime, "DST case has a time")
+            check(NaturalDateParser.removingMatch(from: "schůzka 28.3.2027 v 2:30 ráno", suggestion: suggestion) == "schůzka",
+                  "DST case strips to \"schůzka\"")
+        } else {
+            check(false, "\"schůzka 28.3.2027 v 2:30 ráno\" should parse")
+        }
+
         print("NaturalDateParser – negatives")
         expectNil("")
         expectNil("   ")

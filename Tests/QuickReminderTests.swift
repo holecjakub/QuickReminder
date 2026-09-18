@@ -23,6 +23,16 @@ enum QuickReminderTests {
         let open = NotchShape(topCornerRadius: 19, bottomCornerRadius: 32).path(in: CGRect(origin: .zero, size: NotchLayout.openSize))
         check(open.boundingRect.width == NotchLayout.openSize.width, "open shape fills its rect")
 
+        print("NotchShape.contains (hit test, top-down canvas coords)")
+        let canvas = NotchLayout.canvasSize.width, size = NotchLayout.openSize
+        let r = { (p: CGPoint) in NotchShape.contains(p, canvasWidth: canvas, shapeSize: size, topCornerRadius: 19, bottomCornerRadius: 32) }
+        let ox = (canvas - size.width) / 2
+        check(r(CGPoint(x: ox + size.width / 2, y: size.height / 2)), "centre is inside")
+        check(r(CGPoint(x: ox + 2, y: 0.2)), "top-left fillet next to the menu bar is inside")
+        check(!r(CGPoint(x: ox + 25, y: size.height - 4)), "bottom-left rounded corner gap is outside")
+        check(!r(CGPoint(x: ox - 5, y: 50)), "left of the body is outside")
+        check(r(CGPoint(x: ox + 20, y: 50)), "just inside the straight side is inside")
+
         print("NotchLayout")
         check(NotchLayout.openSize.height > 38 + 150, "open panel leaves room for header, input and bottom bar")
         check(NotchLayout.closeDuration >= 0.3, "window stays until the close spring settles")

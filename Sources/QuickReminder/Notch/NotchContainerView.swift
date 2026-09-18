@@ -22,7 +22,7 @@ struct NotchContainerView: View {
                 .fill(Color.black)
                 .frame(width: state.currentSize.width, height: state.currentSize.height)
 
-            QuickReminderView()
+            QuickReminderView(notchBandHeight: state.notchBandHeight)
                 .frame(width: state.openSize.width, height: state.openSize.height)
                 .opacity(state.contentVisible ? 1 : 0)
                 .blur(radius: state.contentVisible || reduceMotion ? 0 : 8)
@@ -30,12 +30,19 @@ struct NotchContainerView: View {
                 .allowsHitTesting(state.isOpen)
                 .accessibilityHidden(!state.isOpen)
                 // Never let content pixels spill outside the black body mid-animation.
+                // Once settled the content sits fully inside the body, so the mask is dropped.
                 .mask(
-                    silhouette
-                        .frame(width: state.currentSize.width, height: state.currentSize.height)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    Group {
+                        if state.isSettled {
+                            Rectangle()
+                        } else {
+                            silhouette
+                                .frame(width: state.currentSize.width, height: state.currentSize.height)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        }
+                    }
                 )
         }
-        .frame(width: state.openSize.width, height: state.openSize.height, alignment: .top)
+        .frame(width: NotchLayout.canvasSize.width, height: NotchLayout.canvasSize.height, alignment: .top)
     }
 }

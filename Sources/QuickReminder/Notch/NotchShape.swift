@@ -134,19 +134,28 @@ extension NotchShape {
     static func width(forNotchWidth notchWidth: CGFloat, topCornerRadius: CGFloat = Radius.closedTop) -> CGFloat {
         notchWidth + topCornerRadius * 2
     }
+
+    /// Whether `point` (top-down coordinates, origin at the canvas's top-left) lies inside a
+    /// silhouette of `shapeSize` hanging from the top edge and centred in a canvas `canvasWidth` wide.
+    static func contains(
+        _ point: CGPoint,
+        canvasWidth: CGFloat,
+        shapeSize: CGSize,
+        topCornerRadius: CGFloat,
+        bottomCornerRadius: CGFloat
+    ) -> Bool {
+        let originX = (canvasWidth - shapeSize.width) / 2
+        let local = CGPoint(x: point.x - originX, y: point.y)
+        return NotchShape(topCornerRadius: topCornerRadius, bottomCornerRadius: bottomCornerRadius)
+            .path(in: CGRect(origin: .zero, size: shapeSize))
+            .contains(local)
+    }
 }
 
 // MARK: - NotchGeometry
 
 /// Measures the physical notch of a display.
 enum NotchGeometry {
-    /// Extra size added to the real notch so the drawn black shape slightly
-    /// overlaps the hardware cutout and hides anti-aliasing seams.
-    ///
-    /// boring.notch adds `+4` to the computed notch width; NotchDrop uses an
-    /// `inset` of `-4` for the same reason. 2pt on each side is the compromise.
-    static let bleed: CGFloat = 4
-
     /// Fallback notch size for displays without a hardware notch.
     ///
     /// NotchDrop falls back to `150 × 28`, DynamicNotchKit to `300 × menuBarHeight`.
@@ -205,12 +214,22 @@ enum NotchGeometry {
         )
     }
 
-    /// The notch rect grown by ``bleed`` in both dimensions, anchored to the top
-    /// edge — what the closed black shape should actually be drawn at.
+    /// Size of the closed black silhouette for `screen`: the notch (or the fallback pill) plus the
+    /// two outward top fillets, plus a 2 × 1 pt bleed over a real notch so anti-aliasing seams never
+    /// peek out around the bezel (boring.notch adds +4, NotchDrop insets −4).
     @MainActor
-    static func closedShapeSize(for screen: NSScreen) -> CGSize {
-        let rect = notchRectOrFallback(for: screen)
-        return CGSize(width: rect.width + bleed, height: rect.height + bleed / 2)
+    static func closedShapeSize(for screen: NSScreen, topCornerRadius: CGFloat) -> CGSize {
+        if let notch = notchRect(for: screen) {
+            return CGSize(
+                width: NotchShape.width(forNotchWidth: notch.width, topCornerRadius: topCornerRadius) + 2,
+                height: notch.height + 1
+            )
+        }
+        let fallback = fallbackNotchSize(for: screen)
+        return CGSize(
+            width: NotchShape.width(forNotchWidth: fallback.width, topCornerRadius: topCornerRadius),
+            height: fallback.height
+        )
     }
 }
 
