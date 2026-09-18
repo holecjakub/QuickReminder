@@ -47,6 +47,9 @@ enum QuickReminderTests {
         let data = try? JSONEncoder().encode(sc)
         check(data.flatMap { try? JSONDecoder().decode(HotkeyManager.Shortcut.self, from: $0) } == sc, "shortcut round-trips through JSON")
 
+        print("NaturalDateParser")
+        NaturalDateParserTests.run { ok, message in check(ok, message) }
+
         print(failures == 0 ? "\nAll checks passed." : "\n\(failures) check(s) FAILED.")
         exit(failures == 0 ? 0 : 1)
     }

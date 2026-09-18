@@ -24,6 +24,7 @@ Scripts/test.sh   # geometry / shortcut unit checks, no Xcode project needed
 | Action | Result |
 |--------|--------|
 | `⇧⌘R` (configurable) or click the notch | Panel expands out of the notch and takes the keyboard; the frontmost app stays active (no app switch) |
+| Type a date in the title (“buy milk tomorrow at 2pm”, “zavolat mámě zítra ve 14:00”) | A blue suggestion chip appears; `Tab` or click applies it and strips the phrase from the title; on save it is applied automatically. English and Czech. |
 | Type, `⌘↩` / `↩` / click ✓ | Saves to Apple Reminders and collapses |
 | `Esc`, click outside, hotkey again, ⓧ | Collapses without saving |
 | “Reminders ▾” | Pick the target list (persists) |

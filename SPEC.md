@@ -16,6 +16,7 @@ Notch research (boring.notch, NotchDrop, DynamicNotchKit): `reference/notch-rese
 | `open quickreminder://show` / `hide` / `toggle` | Same actions for Shortcuts, Raycast, scripts (`quickreminder:///show` also accepted) |
 | Hotkey again, `Esc` (also while typing), click outside the black shape, ⓧ | Collapse without saving; in-progress text discarded |
 | Type in “New Reminder” | Save button turns blue |
+| Title contains a date/time phrase (EN or CZ: “tomorrow at 2pm”, “zítra ve 14:00”, “v pátek”, “12. března”, “in 2 hours”, “za 30 minut”) | Blue suggestion chip below the input (“Tomorrow, 2:00 PM ⇥”). `Tab` or click applies it (due date set, phrase removed from title); ⓧ dismisses it for that phrase; an un-dismissed suggestion is applied automatically on save, like iOS Reminders. `NaturalDateParser` picks the right-most phrase; day-only phrases default to 9:00. |
 | “Notes” line | Optional notes |
 | “Reminders ▾” | Popover with all reminder lists; selection persists |
 | Calendar icon | Menu: None · Mark as Urgent · Remind Me In 1 Hour · Remind Me Tomorrow · Remind Me Later… (date picker). A blue date chip appears above the bottom bar. |
@@ -27,7 +28,7 @@ Notch research (boring.notch, NotchDrop, DynamicNotchKit): `reference/notch-rese
 | Reopen during the collapse animation | Reverses smoothly from the current shape |
 | Reduce Motion enabled | Plain crossfades, no spring / blur / scale |
 
-Non-goals (v1): subtasks, repeats, URLs, attachments, natural-language dates.
+Non-goals (v1): subtasks, repeats, URLs, attachments.
 
 ---
 
@@ -52,6 +53,7 @@ Sources/QuickReminder/
 │   ├── ListPickerMenu.swift, DatePickerPopover.swift
 ├── Services/
 │   ├── RemindersService.swift      EventKit: access, lists (observes EKEventStoreChanged), save
+│   ├── NaturalDateParser.swift     EN + CZ date/time phrase detection (regex over a diacritics-folded copy)
 │   ├── HotkeyManager.swift         Carbon RegisterEventHotKey (no Accessibility permission) + HotkeyRecorderView
 │   └── Preferences.swift
 └── Settings/SettingsView.swift

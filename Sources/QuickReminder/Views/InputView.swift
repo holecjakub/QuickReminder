@@ -6,6 +6,8 @@ struct InputView: View {
     @Binding var notes: String
     @FocusState.Binding var titleFocused: Bool
     let onSubmit: () -> Void
+    /// Return true to consume Tab (used to accept a date suggestion).
+    var onTab: () -> Bool = { false }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -21,6 +23,7 @@ struct InputView: View {
                     onSubmit: onSubmit
                 )
                 .focused($titleFocused)
+                .onKeyPress(.tab) { onTab() ? .handled : .ignored }
 
                 PlaceholderTextField(
                     placeholder: "Notes",
