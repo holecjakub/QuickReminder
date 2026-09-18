@@ -15,10 +15,20 @@ final class RemindersService: ObservableObject {
         NotificationCenter.default.addObserver(
             forName: .EKEventStoreChanged, object: store, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, self.accessGranted else { return }
-                self.loadCalendars()
-            }
+            Task { @MainActor in self?.scheduleReload() }
+        }
+    }
+
+    private var reloadTask: Task<Void, Never>?
+
+    /// EKEventStoreChanged arrives in bursts (and after our own saves); coalesce into one reload.
+    private func scheduleReload() {
+        guard accessGranted else { return }
+        reloadTask?.cancel()
+        reloadTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            self?.loadCalendars()
         }
     }
 
@@ -43,7 +53,12 @@ final class RemindersService: ObservableObject {
     }
 
     func loadCalendars() {
-        calendars = store.calendars(for: .reminder)
+        let fresh = store.calendars(for: .reminder)
+        // Avoid re-rendering the whole panel when nothing changed.
+        if fresh.map(\.calendarIdentifier) != calendars.map(\.calendarIdentifier)
+            || fresh.map(\.title) != calendars.map(\.title) {
+            calendars = fresh
+        }
     }
 
     func calendar(for id: String?) -> EKCalendar? {

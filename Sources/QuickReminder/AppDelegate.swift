@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -68,7 +69,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSLog("QuickReminder: could not open the Settings window")
     }
 
+    /// Timestamps of recent URL-scheme commands, for rate limiting (any app or web page can send them).
+    private var urlCommandTimes: [Date] = []
+
     func application(_ application: NSApplication, open urls: [URL]) {
+        // Never move keyboard focus while a password field has Secure Event Input enabled.
+        guard !IsSecureEventInputEnabled() else { return }
+        // Debounce (≥ 1 s apart) and cap at 5 commands per minute so a looping page cannot
+        // flicker the panel or keep stealing keystrokes.
+        let now = Date()
+        urlCommandTimes.removeAll { now.timeIntervalSince($0) > 60 }
+        if let last = urlCommandTimes.last, now.timeIntervalSince(last) < 1 { return }
+        guard urlCommandTimes.count < 5 else { return }
+        urlCommandTimes.append(now)
+
         for url in urls {
             guard url.scheme?.lowercased() == "quickreminder" else { continue }
             let command = url.host ?? url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))

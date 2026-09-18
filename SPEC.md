@@ -103,16 +103,17 @@ Dependencies: AppKit, SwiftUI, EventKit, Carbon. No packages.
 
 ## 5. Signing, privacy, entitlements
 
-- **Intentionally unsandboxed, hardened runtime on.** With `com.apple.security.app-sandbox` the EventKit XPC connection fails on this machine (macOS 26.6 / Xcode 27: `NSMachErrorDomain 4099`, no TCC prompt) regardless of signing identity; see `PRs/2026-09-18-notch-review.md` finding 1. Without the sandbox the reminders entitlement is inert, so none is declared.
+- **Intentionally unsandboxed, hardened runtime on.** Experiment on macOS 26.6 / Xcode 27: with `com.apple.security.app-sandbox` + the reminders entitlement, `requestFullAccessToReminders()` fails with `NSMachErrorDomain 4099` and no TCC prompt appears, for an Apple Development identity and ad-hoc, with and without hardened runtime, and after deleting the app's container. Unsandboxed, the same build works. Without the sandbox the reminders entitlement is inert, so none is declared. Re-test on a newer macOS before shipping sandboxed.
+- **URL scheme hardening:** commands are ignored while Secure Event Input is active (password fields), debounced to one per second and capped at five per minute.
 - `build.sh` signs with the “Apple Development” identity when present (TCC grant survives rebuilds), otherwise ad-hoc, always with `--options runtime`, and fails the build if the signature or the runtime flag does not stick.
 - Info.plist: `LSUIElement`, `NSRemindersFullAccessUsageDescription`, `CFBundleURLTypes` (`quickreminder`), `LSMinimumSystemVersion 26.0`.
-- Known accepted risk: any app or web page can open the panel via `quickreminder://show`; the panel is a 600 pt black card at the top of the screen, so it is not covert.
+- Residual accepted risk: any app or web page can open the panel via `quickreminder://show` (browsers ask before opening a custom scheme); the panel is a 600 pt black card at the top of the screen, so it is not covert, and typed text goes nowhere but Reminders.
 
 ---
 
 ## 6. Build & test
 
-- `./build.sh` / `./build.sh run` — direct `swiftc` whole-module build + hand-assembled bundle (works without accepting the Xcode license); `xcodegen generate` keeps the `.xcodeproj` in sync.
+- `./build.sh` / `./build.sh run` — direct `swiftc` build (Release: `-O -wmo -dead_strip`; `CONFIGURATION=Debug` for `-Onone -g`) + hand-assembled bundle (works without accepting the Xcode license); `xcodegen generate` keeps the `.xcodeproj` in sync.
 - `Scripts/test.sh` — compiles sources + `Tests/` into a runner: NotchShape geometry, NotchGeometry, NotchLayout, Shortcut encoding.
 - `Scripts/shot.sh <name> [-R x,y,w,h | --full]` — screenshots into `build/shots/` (override with `QR_SHOT_DIR`).
 

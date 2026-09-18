@@ -7,9 +7,10 @@ TC=/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchai
 SDK=/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
 OUT=build/tests/QuickReminderTests
 mkdir -p build/tests
-SOURCES=$(find Sources -name '*.swift' ! -name 'QuickReminderApp.swift')
+SOURCES=()
+while IFS= read -r -d '' f; do SOURCES+=("$f"); done < <(find Sources Tests -name '*.swift' ! -name 'QuickReminderApp.swift' -print0 | sort -z)
 "$TC/swiftc" -sdk "$SDK" -target arm64-apple-macos26.0 -swift-version 6 -Onone -g \
     -module-name QuickReminderTests \
     -framework AppKit -framework SwiftUI -framework EventKit -framework Carbon \
-    $SOURCES Tests/*.swift -o "$OUT"
+    "${SOURCES[@]}" -o "$OUT"
 "$OUT"

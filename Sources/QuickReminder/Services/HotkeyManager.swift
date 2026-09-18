@@ -18,6 +18,12 @@ final class HotkeyManager {
         /// Default shortcut: ⇧⌘R (keyCode 15 = R).
         static let `default` = Shortcut(keyCode: 15, modifiers: UInt32(cmdKey | shiftKey))
 
+        /// A usable global shortcut needs at least one of ⌘, ⌃ or ⌥; Shift alone or no modifier
+        /// would capture ordinary typing in every app.
+        var isValid: Bool {
+            modifiers & UInt32(cmdKey | controlKey | optionKey) != 0
+        }
+
         var displayString: String {
             var result = ""
             if modifiers & UInt32(controlKey) != 0 { result += "⌃" }
@@ -52,19 +58,27 @@ final class HotkeyManager {
     var shortcut: Shortcut {
         get {
             if let data = UserDefaults.standard.data(forKey: Self.defaultsKey),
-                let decoded = try? JSONDecoder().decode(Shortcut.self, from: data)
+                let decoded = try? JSONDecoder().decode(Shortcut.self, from: data),
+                decoded.isValid
             {
                 return decoded
             }
             return .default
         }
         set {
-            if let data = try? JSONEncoder().encode(newValue) {
-                UserDefaults.standard.set(data, forKey: Self.defaultsKey)
-            }
-            // Always (re)register: the previous registration may have failed
-            // because the old combo was taken by another app.
+            let previous = shortcut
+            persist(newValue)
             register()
+            if registrationFailed, newValue != previous {
+                // The new combo is owned by another app: keep the old, working one and
+                // remember what was rejected so the recorder can say so.
+                rejectedShortcut = newValue
+                persist(previous)
+                register()
+                registrationFailed = true
+            } else {
+                rejectedShortcut = nil
+            }
         }
     }
 
@@ -121,7 +135,7 @@ final class HotkeyManager {
             &eventHandlerRef
         )
 
-        guard handlerStatus == noErr else { return }
+        guard handlerStatus == noErr else { registrationFailed = true; return }
 
         let current = shortcut
         var hotKeyRefLocal: EventHotKeyRef?
@@ -145,6 +159,14 @@ final class HotkeyManager {
 
     /// True when the current shortcut could not be registered system-wide.
     private(set) var registrationFailed = false
+    /// The combination the user last tried that another app already owns.
+    private(set) var rejectedShortcut: Shortcut?
+
+    private func persist(_ value: Shortcut) {
+        if let data = try? JSONEncoder().encode(value) {
+            UserDefaults.standard.set(data, forKey: Self.defaultsKey)
+        }
+    }
 
     func unregister() {
         if let hotKeyRef {
@@ -174,7 +196,7 @@ struct HotkeyRecorderView: View {
                     .frame(minWidth: 120)
             }
             if registrationFailed {
-                Text("\(shortcut.displayString) is in use by another app.")
+                Text("\((HotkeyManager.shared.rejectedShortcut ?? shortcut).displayString) is in use by another app.")
                     .font(.caption)
                     .foregroundStyle(.red)
             }
@@ -196,16 +218,16 @@ struct HotkeyRecorderView: View {
             if flags.contains(.option) { modifiers |= UInt32(optionKey) }
             if flags.contains(.control) { modifiers |= UInt32(controlKey) }
 
-            // Esc cancels; a bare key (no modifier) would hijack that key system-wide.
+            // Esc cancels; a combo without ⌘/⌃/⌥ (bare key, Shift-only) would hijack typing system-wide.
             if event.keyCode == 53 { return nil }
-            guard modifiers != 0 else { return event }
+            guard HotkeyManager.Shortcut(keyCode: UInt32(event.keyCode), modifiers: modifiers).isValid else { return event }
 
             let newShortcut = HotkeyManager.Shortcut(
                 keyCode: UInt32(event.keyCode),
                 modifiers: modifiers
             )
-            shortcut = newShortcut
             HotkeyManager.shared.shortcut = newShortcut
+            shortcut = HotkeyManager.shared.shortcut   // the one actually registered
             registrationFailed = HotkeyManager.shared.registrationFailed
             return nil
         }

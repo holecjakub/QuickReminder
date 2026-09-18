@@ -27,7 +27,7 @@ SWIFTC="$DEVELOPER_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
 SDK="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
 TARGET="arm64-apple-macos26.0"
 
-CONFIGURATION="${CONFIGURATION:-Debug}"
+CONFIGURATION="${CONFIGURATION:-Release}"   # CONFIGURATION=Debug ./build.sh for -Onone -g
 
 if [[ ! -x "$SWIFTC" ]]; then
     echo "error: swiftc not found at $SWIFTC" >&2
@@ -67,9 +67,9 @@ if [[ ${#SWIFT_FILES[@]} -eq 0 ]]; then
     exit 1
 fi
 
-OPT_FLAGS=(-O)
+OPT_FLAGS=(-O -wmo -Xlinker -dead_strip)
 if [[ "$CONFIGURATION" == "Debug" ]]; then
-    OPT_FLAGS=(-Onone -g)
+    OPT_FLAGS=(-Onone -g -enable-batch-mode)
 fi
 
 set +e
@@ -87,6 +87,12 @@ set +e
     "${SWIFT_FILES[@]}"
 COMPILE_STATUS=$?
 set -e
+
+# swiftc -g drops the dSYM next to the executable; keep it out of the signed bundle.
+if [[ -d "$EXECUTABLE.dSYM" ]]; then
+    rm -rf "build/$APP_NAME.dSYM"
+    mv "$EXECUTABLE.dSYM" "build/$APP_NAME.dSYM"
+fi
 
 if [[ $COMPILE_STATUS -ne 0 ]]; then
     echo "" >&2
@@ -123,7 +129,9 @@ fi
 # Prefer a stable developer identity (TCC grants for Reminders then survive rebuilds);
 # fall back to ad-hoc ("-") when none is in the keychain. Override with SIGN_ID=...
 if [[ -z "${SIGN_ID:-}" ]]; then
-    SIGN_ID="$(security find-identity -v -p codesigning 2>/dev/null | grep -o '"Apple Development: [^"]*"' | head -1 | tr -d '"')"
+    # Select by certificate hash so two identities with the same display name can't make
+    # codesign ambiguous or alternate between builds (which would invalidate the TCC grant).
+    SIGN_ID="$(security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development/ {print $2; exit}')"
     SIGN_ID="${SIGN_ID:--}"
 fi
 echo "Code signing (identity: $SIGN_ID)..."

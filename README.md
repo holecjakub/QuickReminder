@@ -33,7 +33,7 @@ Scripts/test.sh   # geometry / shortcut unit checks, no Xcode project needed
 | Flag icon | Toggle flagged (orange) — stored as High priority, EventKit exposes no flag |
 | `open quickreminder://show` (`hide`, `toggle`) | Same actions from Shortcuts, Raycast, scripts |
 
-Menu bar icon → **Settings…** to change the hotkey or default list. First save asks for Reminders access (System Settings → Privacy & Security → Reminders if you need to re-enable it).
+Menu bar icon → **Settings…** to change the hotkey (needs ⌘, ⌃ or ⌥) or the default list. The app asks for Reminders access on first launch (System Settings → Privacy & Security → Reminders if you need to re-enable it).
 
 ## Screenshots while developing
 
