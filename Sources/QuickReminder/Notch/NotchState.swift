@@ -15,6 +15,9 @@ final class NotchState: ObservableObject {
     /// "Saved" phase: the silhouette collapses to notch height but stays wider at the sides
     /// while the ✓ flies into the right-hand extension and plays its done animation.
     @Published var isSaving: Bool = false
+    /// The saved badge exists (and the save button yields its geometry) from the moment of
+    /// saving until the window is ordered out, so the badge never flies back to the button.
+    @Published var savedBadgeShown: Bool = false
 
     /// Size of the collapsed silhouette. Slightly larger than the physical notch so
     /// anti-aliased edges never peek out around the bezel.

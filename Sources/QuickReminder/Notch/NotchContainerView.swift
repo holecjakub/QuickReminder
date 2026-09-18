@@ -27,7 +27,7 @@ struct NotchContainerView: View {
             QuickReminderView(
                 notchBandHeight: state.notchBandHeight,
                 saveNamespace: saveNamespace,
-                isSaving: state.isSaving
+                isSaving: state.savedBadgeShown
             )
                 .frame(width: state.openSize.width, height: state.openSize.height)
                 .opacity(state.contentVisible ? 1 : 0)
@@ -50,12 +50,14 @@ struct NotchContainerView: View {
                 )
 
             // "Saved" badge: lands in the right-hand extension of the collapsed notch.
-            if state.isSaving {
+            if state.savedBadgeShown {
                 SavedCheckView()
                     .matchedGeometryEffect(id: "save", in: saveNamespace)
+                    // Fades out in place, a little ahead of the notch shrinking back around it.
+                    .opacity(state.isSaving ? 1 : 0)
+                    .animation(.easeOut(duration: 0.16), value: state.isSaving)
                     .frame(width: state.savedSize.width, height: state.savedSize.height, alignment: .trailing)
                     .padding(.trailing, (NotchLayout.savedExtension - NotchLayout.savedBadgeSize) / 2 + NotchLayout.closedTopRadius / 2)
-                    .transition(.opacity)
                     .allowsHitTesting(false)
             }
         }

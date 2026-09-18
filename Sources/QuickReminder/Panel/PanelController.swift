@@ -49,6 +49,8 @@ final class PanelController {
             window.setFrame(windowFrame(for: screen), display: false)
             // Start collapsed so the first frame is indistinguishable from the bezel.
             state.isOpen = false
+            state.isSaving = false
+            state.savedBadgeShown = false
             state.contentVisible = false
         }
         window.ignoresMouseEvents = false
@@ -116,6 +118,9 @@ final class PanelController {
             guard !Task.isCancelled, let self, !self.isVisible else { return }
             window.ignoresMouseEvents = true
             window.orderOut(nil)
+            var noAnimation = Transaction()
+            noAnimation.disablesAnimations = true
+            withTransaction(noAnimation) { self.state.savedBadgeShown = false }
             self.closeTask = nil
         }
     }
@@ -137,6 +142,7 @@ final class PanelController {
         withAnimation(NotchLayout.savingAnimation) {
             state.isOpen = false
             state.isSaving = true
+            state.savedBadgeShown = true   // same transaction as the button's removal → the ✓ flies
         }
         saveTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(NotchLayout.savedHold))
