@@ -100,7 +100,7 @@ struct BottomBar: View {
         } label: {
             icon("calendar.badge.clock", active: dueDate != nil)
         }
-        .buttonStyle(HoverButtonStyle())
+        .buttonStyle(HoverHighlightButtonStyle())
         .accessibilityLabel("Add date")
         .popover(isPresented: $showCustomDatePicker, arrowEdge: .bottom) {
             DatePickerPopover(selectedDate: $dueDate, isPresented: $showCustomDatePicker)
@@ -112,7 +112,7 @@ struct BottomBar: View {
             icon(locationText.isEmpty ? "location" : "location.fill", active: !locationText.isEmpty)
                 .contentTransition(.symbolEffect(.replace))
         }
-        .buttonStyle(HoverButtonStyle())
+        .buttonStyle(HoverHighlightButtonStyle())
         .accessibilityLabel("Add location")
         .popover(isPresented: $showLocationField, arrowEdge: .bottom) {
             locationPopover
@@ -126,7 +126,7 @@ struct BottomBar: View {
             icon(flagged ? "flag.fill" : "flag", active: flagged, activeColor: Theme.flagOrange)
                 .contentTransition(.symbolEffect(.replace))
         }
-        .buttonStyle(HoverButtonStyle())
+        .buttonStyle(HoverHighlightButtonStyle())
         .accessibilityLabel("Toggle flag")
     }
 

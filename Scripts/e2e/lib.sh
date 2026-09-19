@@ -75,6 +75,10 @@ color_count() {
     python3 "$LIB_DIR/pixels.py" color_count "$@"
 }
 
+saturated_count() {
+    python3 "$LIB_DIR/pixels.py" saturated_count "$@"
+}
+
 silhouette_width() {
     python3 "$LIB_DIR/pixels.py" silhouette_width "$@"
 }
@@ -89,14 +93,14 @@ assert_open() {
         return 1
     fi
     # A plain black surface under the notch (dark terminal, video) must never pass as "open":
-    # the accent-blue "Reminders ▾" header is the panel's own signature. Nothing is typed
-    # unless this passes.
-    local blue; blue=$(color_count "$png" 30 40 300 50 0A84FF 70)
-    if [[ "$blue" -lt 400 ]]; then
-        echo "expected the blue Reminders header (blue=$blue < 400) at $label"
+    # the grey ⓧ close button (#59595D, list-colour independent — the header takes the list's
+    # colour) at the panel's top-right is the signature. Nothing is typed unless this passes.
+    local grey; grey=$(color_count "$png" 520 35 60 50 59595D 28)
+    if [[ "$grey" -lt 300 ]]; then
+        echo "expected the grey close button (grey=$grey < 300) at $label"
         return 1
     fi
-    log_step "assert_open $label: dark=$n blue=$blue"
+    log_step "assert_open $label: dark=$n close=$grey"
     return 0
 }
 

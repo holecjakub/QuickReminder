@@ -216,12 +216,12 @@ type_suggestion_tab() {
     type_text "Buy milk tomorrow at 2pm"
     sleep 0.5
     local png_before; png_before=$(shot "type_suggestion_tab_typed")
-    local chip; chip=$(color_count "$png_before" 20 125 260 30 0A84FF 60)
+    local chip; chip=$(saturated_count "$png_before" 20 105 260 45)
     if [[ "$chip" -lt 200 ]]; then
-        fail "expected a blue suggestion chip (color_count=$chip)"
+        fail "expected a suggestion chip (saturated=$chip)"
         return 1
     fi
-    log_step "chip present: color_count=$chip"
+    log_step "chip present: saturated=$chip"
     local title_before; title_before=$(bright_count "$png_before" 60 75 550 40 200)
     press_tab
     sleep 0.4
@@ -243,15 +243,16 @@ czech_suggestion() {
     hotkey_toggle
     sleep 0.8
     assert_open "czech_suggestion_open" || return 1
+    sleep 0.3   # focus retries run at +0.12 s / +0.30 s after open
     type_text "Zavolat mámě zítra ve 14:00"
     sleep 0.5
     local png; png=$(shot "czech_suggestion_typed")
-    local chip; chip=$(color_count "$png" 20 125 260 30 0A84FF 60)
+    local chip; chip=$(saturated_count "$png" 20 105 260 45)
     if [[ "$chip" -lt 200 ]]; then
-        fail "expected a blue suggestion chip for Czech input (color_count=$chip)"
+        fail "expected a suggestion chip for Czech input (saturated=$chip)"
         return 1
     fi
-    log_step "chip present: color_count=$chip"
+    log_step "chip present: saturated=$chip"
     press_escape
     sleep 0.6
     assert_closed "czech_suggestion_closed" || return 1
