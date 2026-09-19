@@ -16,9 +16,8 @@ Run locally:
 swift test
 ```
 
-or, without accepting the Xcode license (`Scripts/test.sh` compiles
-`Sources/` + `Tests/` directly with `swiftc`, bypassing `swift test`/
-`xcodebuild`):
+or `Scripts/test.sh`, a thin wrapper that runs `swift test` from the repo root and
+passes flags through (`Scripts/test.sh --filter NaturalDateParserTests`):
 
 ```
 Scripts/test.sh
@@ -106,3 +105,22 @@ For ad-hoc visual checks while developing (not a test suite): captures a
 region of the built-in display to `build/shots/<name>.png`. See the
 `Scripts/e2e/pixels.py` module if you want to script an assertion against
 one of these directly.
+
+## E2E: what to know before running it
+
+- The runner **kills any running QuickReminder** (including a notarized copy from
+  /Applications) and drives a fresh instance of `build/QuickReminder.app` launched with
+  `QR_CAPTURE_PARKED=1`; at the end it relaunches whichever bundle was running before.
+- It sends **real keystrokes and clicks** system-wide. Nothing is typed unless the panel is
+  verified open by two independent pixel checks (large dark region *and* the blue
+  "Reminders ▾" header), and the run aborts if the test instance did not start. The suite
+  assumes the default `⇧⌘R` hotkey and default list: the dev build shares `UserDefaults`
+  with the installed app, so a changed hotkey makes the hotkey scenarios fail (safely).
+- `--with-save` creates a real reminder titled "E2E test reminder" in your default list and
+  does not delete it.
+- Screenshots under `build/e2e/<timestamp>/` cover a 600 × 214 pt strip at the top centre of
+  the built-in display and may contain whatever sits there (menu bar, tab titles). The
+  folder is gitignored; clear it before attaching logs to a bug report. `screencapture`
+  needs Screen Recording permission for your terminal.
+- Coordinates are calibrated for a 14" MacBook Pro (1800 × 1169 pt, notch at x ≈ 901);
+  other notched Macs need the constants in `Scripts/e2e/lib.sh` adjusted.

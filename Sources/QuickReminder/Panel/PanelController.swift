@@ -143,6 +143,7 @@ final class PanelController {
             if let screen { parkClosed(on: screen) }
 
         case .orderOut:
+            resetOpenFlagsWithoutAnimation()
             window?.ignoresMouseEvents = true
             window?.orderOut(nil)
 
@@ -354,7 +355,18 @@ final class PanelController {
     /// Closed state on a notched display: a small, click-through-free window hugging the notch
     /// (hover-swollen size + margin), ordered in without taking key status.
     /// (Hover arming is decided by the machine from the pointer position.)
+    /// A hide dispatched in the same run-loop turn as a show (before the async open block ran)
+    /// must not leave the parked window believing it is open.
+    private func resetOpenFlagsWithoutAnimation() {
+        var noAnim = Transaction(); noAnim.disablesAnimations = true
+        withTransaction(noAnim) {
+            if state.isOpen { state.isOpen = false }
+            if state.contentVisible { state.contentVisible = false }
+        }
+    }
+
     private func parkClosed(on screen: NSScreen) {
+        resetOpenFlagsWithoutAnimation()
         let window = ensureWindow(on: screen)
         var noAnim = Transaction(); noAnim.disablesAnimations = true
         withTransaction(noAnim) {

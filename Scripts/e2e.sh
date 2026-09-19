@@ -61,6 +61,7 @@ source "$LIB_DIR/lib.sh"
 FAILURES=0
 HAS_NOTCH_DISPLAY=1
 CLEANED_UP=0
+PREVIOUS_BUNDLE=""
 
 # ---------------------------------------------------------------- preconditions
 
@@ -117,11 +118,20 @@ precondition_click_tool() {
 # ---------------------------------------------------------------- app lifecycle
 
 launch_test_instance() {
+    # Remember which bundle was running so cleanup relaunches that one, not necessarily build/.
+    local running; running=$(ps -o comm= -p "$(pgrep -x QuickReminder | head -1)" 2>/dev/null || true)
+    if [[ "$running" == */Contents/MacOS/QuickReminder ]]; then
+        PREVIOUS_BUNDLE="${running%/Contents/MacOS/QuickReminder}"
+    fi
     pkill -x QuickReminder 2>/dev/null || true
     sleep 0.4
     QR_CAPTURE_PARKED=1 "$APP_BIN" >"$LOG_DIR/app.log" 2>&1 &
     disown
     sleep 1.2
+    if ! pgrep -x QuickReminder >/dev/null; then
+        echo "error: the test instance did not start (see $LOG_DIR/app.log); aborting before any keystroke is sent" >&2
+        exit 2
+    fi
 }
 
 cleanup() {
@@ -133,10 +143,12 @@ cleanup() {
     fi
     pkill -x QuickReminder 2>/dev/null || true
     sleep 0.3
+    local target="${PREVIOUS_BUNDLE:-$APP_BUNDLE}"
+    [[ -d "$target" ]] || target="$APP_BUNDLE"
     # launchd occasionally refuses a spawn immediately after pkill; retry once.
-    if ! open "$APP_BUNDLE" 2>/dev/null; then
+    if ! open "$target" 2>/dev/null; then
         sleep 0.5
-        open "$APP_BUNDLE" 2>/dev/null || echo "warning: failed to relaunch $APP_BUNDLE -- launch it manually" >&2
+        open "$target" 2>/dev/null || echo "warning: failed to relaunch $target -- launch it manually" >&2
     fi
     true
 }

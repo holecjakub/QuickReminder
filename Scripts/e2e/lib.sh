@@ -59,7 +59,15 @@ assert_open() {
         echo "expected open (dark=$n < $DARK_OPEN_MIN) at $label"
         return 1
     fi
-    log_step "assert_open $label: dark=$n"
+    # A plain black surface under the notch (dark terminal, video) must never pass as "open":
+    # the accent-blue "Reminders ▾" header is the panel's own signature. Nothing is typed
+    # unless this passes.
+    local blue; blue=$(color_count "$png" 30 40 300 50 0A84FF 70)
+    if [[ "$blue" -lt 400 ]]; then
+        echo "expected the blue Reminders header (blue=$blue < 400) at $label"
+        return 1
+    fi
+    log_step "assert_open $label: dark=$n blue=$blue"
     return 0
 }
 
