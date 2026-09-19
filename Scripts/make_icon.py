@@ -80,20 +80,20 @@ def render(size=N):
 
     # Body: grey gradient inside a squircle, with a faint darker rim.
     mask = squircle_mask(size, box)
-    body = vertical_gradient(size, box, (0xA9, 0xA9, 0xAE), (0x6A, 0x6A, 0x6F)).convert("RGBA")
+    body = vertical_gradient(size, box, (0xE9, 0xEA, 0xEC), (0xB9, 0xDF, 0xC6)).convert("RGBA")
     img.paste(body, (0, 0), mask)
     rim = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     ImageDraw.Draw(rim).bitmap((0, 0), mask, fill=(0, 0, 0, 40))
     inner = squircle_mask(size, (box[0] + 3 * S, box[1] + 3 * S, box[2] - 3 * S, box[3] - 3 * S))
     rim_layer = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    rim_layer.paste((0, 0, 0, 45), (0, 0), mask)
+    rim_layer.paste((0, 0, 0, 60), (0, 0), mask)
     rim_layer.paste((0, 0, 0, 0), (0, 0), inner)
     img.alpha_composite(rim_layer)
 
     # Notch hanging from the top edge of the body.
     cx = size / 2
-    notch_w, notch_h = w * 0.40, w * 0.17
-    top_r, bottom_r = w * 0.028, w * 0.062
+    notch_w, notch_h = w * 0.56, w * 0.50
+    top_r, bottom_r = w * 0.045, w * 0.13
     notch = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     ImageDraw.Draw(notch).polygon(notch_path(cx, box[1], notch_w, notch_h, top_r, bottom_r), fill=(0, 0, 0, 255))
     # keep the notch inside the squircle (the fillets reach the rounded top edge)
@@ -105,13 +105,13 @@ def render(size=N):
     # Checkmark inside the notch.
     chk = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(chk)
-    ch = notch_h * 0.52
+    ch = notch_h * 0.34
     cw = ch * 1.35
     ccx, ccy = cx, box[1] + notch_h * 0.5
     p0 = (ccx - cw / 2, ccy + ch * 0.02)
     p1 = (ccx - cw * 0.12, ccy + ch / 2)
     p2 = (ccx + cw / 2, ccy - ch / 2)
-    lw = int(notch_h * 0.135)
+    lw = int(notch_h * 0.075)
     d.line([p0, p1, p2], fill=(255, 255, 255, 255), width=lw, joint="curve")
     for p in (p0, p2):
         d.ellipse([p[0] - lw / 2, p[1] - lw / 2, p[0] + lw / 2, p[1] + lw / 2], fill=(255, 255, 255, 255))
