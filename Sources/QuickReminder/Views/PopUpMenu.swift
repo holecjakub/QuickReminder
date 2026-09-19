@@ -13,7 +13,9 @@ final class PopUpMenu: NSObject {
 
     private var actions: [() -> Void] = []
 
-    func show(_ items: [Item]) {
+    /// Presents the menu just below the panel (the panel window sits above the menu's window
+    /// level, so a menu popped at the pointer would be partly hidden behind it).
+    func show(_ items: [Item], belowPanelAt x: CGFloat? = nil) {
         let menu = NSMenu()
         actions = []
         for item in items {
@@ -32,7 +34,12 @@ final class PopUpMenu: NSObject {
             }
         }
         // Screen coordinates (Cocoa, bottom-left origin) — `in: nil` pops relative to the screen.
-        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+        var point = NSEvent.mouseLocation
+        if let x, let window = NSApp.keyWindow {
+            // Visible panel bottom = window bottom + overshoot padding; drop the menu right below it.
+            point = NSPoint(x: x, y: window.frame.minY + NotchLayout.overshootPadding - 4)
+        }
+        menu.popUp(positioning: menu.items.first, at: point, in: nil)
     }
 
     @objc private func menuItemSelected(_ sender: NSMenuItem) {

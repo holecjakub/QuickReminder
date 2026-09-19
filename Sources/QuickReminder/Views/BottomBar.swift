@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Bottom row: outlined pill with date / location / flag on the left, round ✓ save button on the right.
@@ -96,7 +97,7 @@ struct BottomBar: View {
                 .action("Remind Me Tomorrow", systemImage: "calendar") { dueDate = tomorrowAt9AM() },
                 .separator,
                 .action("Remind Me Later…", systemImage: "calendar") { showCustomDatePicker = true },
-            ])
+            ], belowPanelAt: NSEvent.mouseLocation.x - 12)
         } label: {
             icon("calendar.badge.clock", active: dueDate != nil)
         }
