@@ -23,6 +23,9 @@ struct NotchContainerView: View {
             silhouette
                 .fill(Color.black)
                 .frame(width: state.currentSize.width, height: state.currentSize.height)
+                .contentShape(silhouette)
+                .onHover { PanelController.shared.notchHoverChanged($0) }
+                .onTapGesture { PanelController.shared.notchTapped() }
 
             QuickReminderView(
                 notchBandHeight: state.notchBandHeight,
@@ -63,6 +66,6 @@ struct NotchContainerView: View {
                     .allowsHitTesting(false)
             }
         }
-        .frame(width: NotchLayout.canvasSize.width, height: NotchLayout.canvasSize.height, alignment: .top)
+        .frame(width: state.canvasSize.width, height: state.canvasSize.height, alignment: .top)
     }
 }

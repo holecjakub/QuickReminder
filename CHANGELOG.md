@@ -4,6 +4,8 @@ All notable changes to QuickReminder. Format: [Keep a Changelog](https://keepach
 
 ## Unreleased
 
+- Hovering the notch swells the closed silhouette with a small spring and taps the trackpad; click and hover now come from the always-on notch window instead of global mouse monitoring.
+
 ## 0.1.0
 
 First public build.

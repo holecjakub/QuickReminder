@@ -12,6 +12,10 @@ final class PanelController {
     private var window: NotchWindow?
     private var hostingView: NSHostingView<AnyView>?
     private var globalClickMonitor: Any?
+    /// True when the window stays ordered in over a physical notch while closed.
+    private var alwaysOn = false
+    /// Re-armed once the pointer has left the notch; prevents an immediate re-hover after closing.
+    private var hoverArmed = true
     private var localEventMonitor: Any?
     private var openGeneration = UUID()
     private var closeTask: Task<Void, Never>?
@@ -19,6 +23,14 @@ final class PanelController {
 
     private init() {
         installGlobalClickMonitor()
+        // On a notched display the window lives permanently over the notch (like boring.notch):
+        // its closed silhouette is indistinguishable from the bezel and gives us hover + click
+        // without any system-wide mouse polling.
+        if let screen = targetScreen(), NotchGeometry.notchRect(for: screen) != nil {
+            alwaysOn = true
+            configureGeometry(for: screen)
+            parkClosed(on: screen)
+        }
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
@@ -57,9 +69,11 @@ final class PanelController {
         configureGeometry(for: screen)
         let window = ensureWindow(on: screen)
         if !wasClosing {
+            // Grow the window to the full canvas (no animation: the silhouette keeps its place,
+            // both frames are top-aligned and centred on the notch), start collapsed.
+            var noAnim = Transaction(); noAnim.disablesAnimations = true
+            withTransaction(noAnim) { state.canvasSize = NotchLayout.canvasSize }
             window.setFrame(windowFrame(for: screen), display: false)
-            // Start collapsed so the first frame is indistinguishable from the bezel
-            // (only publish what actually changes).
             if state.isOpen { state.isOpen = false }
             if state.contentVisible { state.contentVisible = false }
         }
@@ -70,9 +84,11 @@ final class PanelController {
         NotificationCenter.default.post(name: .panelWillShow, object: nil)
 
         // Next run-loop turn: expand.
+        hoverArmed = false
         DispatchQueue.main.async { [state] in
             withAnimation(NotchLayout.effectiveOpen) {
                 state.isSaving = false   // reopen from the saved pill: spring from its current width
+                state.isHovering = false // and from the hover swell, if any
                 state.isOpen = true
             }
             withAnimation(NotchLayout.effectiveContentIn) { state.contentVisible = true }
@@ -119,6 +135,7 @@ final class PanelController {
         NotificationCenter.default.post(name: .panelDidHide, object: nil)
 
         removeLocalEventMonitor()
+        hoverArmed = false
         window.ignoresMouseEvents = true   // the collapse needs no input; clicks reach what is below
         state.isSettled = false
         if state.contentVisible {
@@ -132,11 +149,15 @@ final class PanelController {
         closeTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(NotchLayout.closeDuration))
             guard !Task.isCancelled, let self, !self.isVisible else { return }
-            window.ignoresMouseEvents = true
-            window.orderOut(nil)
             var noAnimation = Transaction()
             noAnimation.disablesAnimations = true
             withTransaction(noAnimation) { self.state.savedBadgeShown = false }
+            if self.alwaysOn, let screen = self.targetScreen() {
+                self.parkClosed(on: screen)
+            } else {
+                window.ignoresMouseEvents = true
+                window.orderOut(nil)
+            }
             self.closeTask = nil
         }
     }
@@ -232,10 +253,31 @@ final class PanelController {
         )
     }
 
+    /// Closed state on a notched display: a small, click-through-free window hugging the notch
+    /// (hover-swollen size + margin), ordered in without taking key status.
+    private func parkClosed(on screen: NSScreen) {
+        let window = ensureWindow(on: screen)
+        var noAnim = Transaction(); noAnim.disablesAnimations = true
+        withTransaction(noAnim) { state.canvasSize = state.closedCanvasSize }
+        window.setFrame(closedWindowFrame(for: screen), display: false)
+        window.ignoresMouseEvents = false
+        window.orderFrontRegardless()
+    }
+
+    private func closedWindowFrame(for screen: NSScreen) -> NSRect {
+        let size = state.closedCanvasSize
+        let centerX = NotchGeometry.notchRect(for: screen)?.midX ?? screen.frame.midX
+        return NSRect(x: centerX - size.width / 2, y: screen.frame.maxY - size.height, width: size.width, height: size.height)
+    }
+
     private func relayout() {
         guard let window, let screen = targetScreen() else { return }
         configureGeometry(for: screen)
-        window.setFrame(windowFrame(for: screen), display: true)
+        if isVisible {
+            window.setFrame(windowFrame(for: screen), display: true)
+        } else if alwaysOn {
+            parkClosed(on: screen)
+        }
     }
 
     // MARK: - Global mouse handling
@@ -313,13 +355,39 @@ final class PanelController {
         )
     }
 
-    private func isOnNotch(_ point: NSPoint) -> Bool {
+    private func isOnNotch(_ point: NSPoint, slack: CGFloat = 8) -> Bool {
         for screen in NSScreen.screens {
-            if let notch = NotchGeometry.notchRect(for: screen), notch.insetBy(dx: -8, dy: 0).contains(point) {
+            if let notch = NotchGeometry.notchRect(for: screen), notch.insetBy(dx: -slack, dy: 0).contains(point) {
                 return true
             }
         }
         return false
+    }
+
+    // MARK: - Hover / tap on the closed notch (tracking comes from the SwiftUI silhouette)
+
+    func notchHoverChanged(_ hovering: Bool) {
+        guard alwaysOn, !isVisible else { return }
+        if hovering {
+            guard hoverArmed, !state.isHovering else { return }
+            if NotchLayout.reduceMotion {
+                state.isHovering = true
+            } else {
+                withAnimation(NotchLayout.hoverInAnimation) { state.isHovering = true }
+            }
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        } else {
+            hoverArmed = true
+            guard state.isHovering else { return }
+            withAnimation(NotchLayout.reduceMotion ? NotchLayout.reducedMotionAnimation : NotchLayout.hoverOutAnimation) {
+                state.isHovering = false
+            }
+        }
+    }
+
+    func notchTapped() {
+        guard !isVisible else { return }
+        show()
     }
 }
 
