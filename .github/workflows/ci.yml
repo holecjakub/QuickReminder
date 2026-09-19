@@ -32,8 +32,8 @@ jobs:
           xcodebuild -version
           swift --version
 
-      - name: Unit checks (Scripts/test.sh)
-        run: Scripts/test.sh
+      - name: Unit tests (swift test --parallel)
+        run: swift test --parallel
 
       - name: Build app (ad-hoc signed)
         env:

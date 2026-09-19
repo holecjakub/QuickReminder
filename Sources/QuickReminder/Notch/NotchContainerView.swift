@@ -25,8 +25,8 @@ struct NotchContainerView: View {
                 .frame(width: state.currentSize.width, height: state.currentSize.height)
                 .contentShape(silhouette)
                 .onHover { PanelController.shared.notchHoverChanged($0) }
-                // Open on mouse-down (like the old global-monitor path), not on mouse-up.
-                .gesture(DragGesture(minimumDistance: 0).onChanged { _ in PanelController.shared.notchTapped() })
+                // Clicks on the closed notch are handled by NotchWindow.sendEvent (mouse-down,
+                // independent of SwiftUI gesture recognition mid-animation).
 
             QuickReminderView(
                 notchBandHeight: state.notchBandHeight,

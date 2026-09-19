@@ -56,7 +56,7 @@ struct QuickReminderView: View {
 
             if let saveErrorText {
                 Text(saveErrorText)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: Theme.s(12), weight: .medium))
                     .foregroundStyle(Color(red: 1.0, green: 0.27, blue: 0.23))
                     .padding(.leading, 31)
                     .padding(.bottom, 8)
@@ -147,9 +147,9 @@ struct QuickReminderView: View {
             Button { applySuggestionIfAny() } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "calendar.badge.clock")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: Theme.s(12), weight: .medium))
                     Text(Self.suggestionFormatter.string(from: s.date, hasTime: s.hasTime))
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: Theme.s(13), weight: .medium))
                     Text("⇥")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.45))
@@ -185,9 +185,9 @@ struct QuickReminderView: View {
     private func dateChip(_ date: Date) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "calendar")
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: Theme.s(12), weight: .medium))
             Text(Self.suggestionFormatter.string(from: date, hasTime: true))
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: Theme.s(13), weight: .medium))
             Button { dueDate = nil } label: {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 13))

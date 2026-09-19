@@ -32,8 +32,8 @@ struct BottomBar: View {
             locationButton
             flagButton
         }
-        .padding(.horizontal, 11)
-        .frame(height: 44)
+        .padding(.horizontal, Theme.s(11))
+        .frame(height: Theme.s(44))
         .background(
             Capsule()
                 .fill(Theme.pillFill)
@@ -41,13 +41,25 @@ struct BottomBar: View {
         )
     }
 
-    private func icon(_ name: String, active: Bool, activeColor: Color = Theme.accent, size: CGFloat? = nil) -> some View {
-        Image(systemName: name)
-            .font(.system(size: size ?? iconSize, weight: .regular))
-            .symbolRenderingMode(.monochrome)
+    /// Pill glyphs are rendered through AppKit's symbol configuration rather than SwiftUI's
+    /// `Image(systemName:)`: at one point size AppKit draws the three symbols optically balanced
+    /// (measured at 22 pt: calendar.badge.clock 25.5 × 21.5, location 21 × 20, flag 20.5 × 20.5),
+    /// whereas the SwiftUI symbol image draws the badge symbol markedly smaller. Template images
+    /// take the foreground style, so active colours keep working.
+    private func icon(_ name: String, active: Bool, activeColor: Color = Theme.accent) -> some View {
+        Image(nsImage: Self.symbolImage(name, pointSize: Theme.s(iconSize)))
+            .renderingMode(.template)
             .foregroundStyle(active ? activeColor : .white)
-            .frame(width: hitSize, height: hitSize)
+            .frame(width: Theme.s(hitSize), height: Theme.s(hitSize))
             .contentShape(Rectangle())
+    }
+
+    private static func symbolImage(_ name: String, pointSize: CGFloat) -> NSImage {
+        let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config) ?? NSImage()
+        image.isTemplate = true
+        return image
     }
 
     private var dateMenu: some View {
@@ -73,7 +85,7 @@ struct BottomBar: View {
                 Label("Remind Me Later…", systemImage: "calendar")
             }
         } label: {
-            icon("calendar.badge.clock", active: dueDate != nil, size: iconSize + 2)
+            icon("calendar.badge.clock", active: dueDate != nil)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -114,17 +126,17 @@ struct BottomBar: View {
         Group {
             if saveButtonYielded {
                 // The badge in NotchContainerView owns the geometry now; keep the slot.
-                Color.clear.frame(width: 48, height: 48)
+                Color.clear.frame(width: Theme.s(48), height: Theme.s(48))
             } else {
                 Button(action: handleSave) {
                     ZStack {
                         Circle()
                             .fill(canSave ? Theme.accent : Theme.grayCircleDisabled)
                         Image(systemName: "checkmark")
-                            .font(.system(size: 22, weight: .semibold))
+                            .font(.system(size: Theme.s(22), weight: .semibold))
                             .foregroundStyle(.white)
                     }
-                    .frame(width: 48, height: 48)
+                    .frame(width: Theme.s(48), height: Theme.s(48))
                     .contentShape(Circle())
                 }
                 .buttonStyle(HoverButtonStyle())

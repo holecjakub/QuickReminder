@@ -20,4 +20,7 @@ enum Theme {
     static let flagOrange = Color(red: 1.0, green: 0.62, blue: 0.04)
 
     static let horizontalPadding: CGFloat = 20
+
+    /// Scales a design metric by the user's text size (see `NotchLayout.textScale`).
+    @MainActor static func s(_ value: CGFloat) -> CGFloat { (value * NotchLayout.textScale).rounded(.toNearestOrEven) }
 }
