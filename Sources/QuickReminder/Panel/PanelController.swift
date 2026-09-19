@@ -51,19 +51,17 @@ final class PanelController {
         noAnimation.disablesAnimations = true
         withTransaction(noAnimation) {
             state.savedBadgeShown = false
-            state.isSaving = false
         }
 
-        let screen = targetScreen()
+        guard let screen = targetScreen() else { return }
         configureGeometry(for: screen)
-        let window = ensureWindow()
+        let window = ensureWindow(on: screen)
         if !wasClosing {
             window.setFrame(windowFrame(for: screen), display: false)
-            // Start collapsed so the first frame is indistinguishable from the bezel.
-            state.isOpen = false
-            state.isSaving = false
-            state.savedBadgeShown = false
-            state.contentVisible = false
+            // Start collapsed so the first frame is indistinguishable from the bezel
+            // (only publish what actually changes).
+            if state.isOpen { state.isOpen = false }
+            if state.contentVisible { state.contentVisible = false }
         }
         window.ignoresMouseEvents = false
         window.makeKeyAndOrderFront(nil)
@@ -73,7 +71,10 @@ final class PanelController {
 
         // Next run-loop turn: expand.
         DispatchQueue.main.async { [state] in
-            withAnimation(NotchLayout.effectiveOpen) { state.isOpen = true }
+            withAnimation(NotchLayout.effectiveOpen) {
+                state.isSaving = false   // reopen from the saved pill: spring from its current width
+                state.isOpen = true
+            }
             withAnimation(NotchLayout.effectiveContentIn) { state.contentVisible = true }
         }
         let openGeneration = UUID()
@@ -94,7 +95,7 @@ final class PanelController {
     /// Makes the first editable text field in the hosting view the first responder
     /// unless the user is already editing something.
     private func focusTitleFieldIfNeeded() {
-        guard isVisible, let window, let hostingView else { return }
+        guard isVisible, !state.isSaving, let window, let hostingView else { return }
         if window.firstResponder is NSTextView { return }
         window.makeKey()
         if let field = Self.firstTextField(in: hostingView) {
@@ -118,11 +119,14 @@ final class PanelController {
         NotificationCenter.default.post(name: .panelDidHide, object: nil)
 
         removeLocalEventMonitor()
+        window.ignoresMouseEvents = true   // the collapse needs no input; clicks reach what is below
         state.isSettled = false
-        withAnimation(NotchLayout.effectiveContentOut) { state.contentVisible = false }
+        if state.contentVisible {
+            withAnimation(NotchLayout.effectiveContentOut) { state.contentVisible = false }
+        }
         withAnimation(NotchLayout.effectiveClose) {
-            state.isOpen = false
-            state.isSaving = false
+            if state.isOpen { state.isOpen = false }
+            if state.isSaving { state.isSaving = false }
         }
 
         closeTask = Task { @MainActor [weak self] in
@@ -146,11 +150,10 @@ final class PanelController {
             hide()
             return
         }
-        // Input is done: no clicks, no keystrokes into the invisible field, and the
-        // settle timer from show() must not drop the mask mid-choreography.
-        removeLocalEventMonitor()
-        window.ignoresMouseEvents = true
-        window.makeFirstResponder(nil)
+        // Flip the guards first so nothing that ending editing might trigger can save again,
+        // then take input away: no clicks, no field editor, and the settle timer from show()
+        // must not drop the mask mid-choreography. The local key monitor stays installed and
+        // swallows keystrokes silently (no beeps) while the panel is still the key window.
         openGeneration = UUID()
         state.isSettled = false
         withAnimation(NotchLayout.contentOutAnimation) { state.contentVisible = false }
@@ -159,6 +162,8 @@ final class PanelController {
             state.isSaving = true
             state.savedBadgeShown = true   // same transaction as the button's removal → the ✓ flies
         }
+        window.ignoresMouseEvents = true
+        window.makeFirstResponder(nil)
         saveTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(NotchLayout.savedHold))
             guard !Task.isCancelled, let self, self.isVisible else { return }
@@ -171,9 +176,8 @@ final class PanelController {
 
     // MARK: - Window & geometry
 
-    private func ensureWindow() -> NotchWindow {
+    private func ensureWindow(on screen: NSScreen) -> NotchWindow {
         if let window { return window }
-        let screen = targetScreen()
         let window = NotchWindow(frame: windowFrame(for: screen))
         let root = AnyView(
             NotchContainerView()
@@ -190,14 +194,15 @@ final class PanelController {
     }
 
     /// Prefer the built-in display with a notch; otherwise the screen under the mouse.
-    private func targetScreen() -> NSScreen {
+    /// nil while displays are being reconfigured (the screen list can be transiently empty).
+    private func targetScreen() -> NSScreen? {
         if let notched = NSScreen.screens.first(where: { NotchGeometry.notchRect(for: $0) != nil }) {
             return notched
         }
         let loc = NSEvent.mouseLocation
         return NSScreen.screens.first { NSMouseInRect(loc, $0.frame, false) }
             ?? NSScreen.main
-            ?? NSScreen.screens[0]
+            ?? NSScreen.screens.first
     }
 
     private func configureGeometry(for screen: NSScreen) {
@@ -228,8 +233,7 @@ final class PanelController {
     }
 
     private func relayout() {
-        guard let window else { return }
-        let screen = targetScreen()
+        guard let window, let screen = targetScreen() else { return }
         configureGeometry(for: screen)
         window.setFrame(windowFrame(for: screen), display: true)
     }
@@ -241,14 +245,21 @@ final class PanelController {
     /// - panel closed → a click on the physical notch expands it
     private func installGlobalClickMonitor() {
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            // Global monitor handlers run on the main thread; no hop needed.
-            MainActor.assumeIsolated {
+            // AppKit delivers monitor blocks on the main thread in practice, but the API does not
+            // promise it, so verify before assuming isolation.
+            let type = event.type
+            let handle: @MainActor () -> Void = {
                 guard let self else { return }
                 if self.isVisible {
                     self.hide()
-                } else if event.type == .leftMouseDown, self.isOnNotch(NSEvent.mouseLocation) {
+                } else if type == .leftMouseDown, self.isOnNotch(NSEvent.mouseLocation) {
                     self.show()
                 }
+            }
+            if Thread.isMainThread {
+                MainActor.assumeIsolated { handle() }
+            } else {
+                DispatchQueue.main.async { handle() }
             }
         }
     }
@@ -265,6 +276,8 @@ final class PanelController {
                     self.hide()
                     return nil
                 }
+                // During the saved hold the panel is still key but has no field: swallow quietly.
+                if self.state.isSaving { return nil }
                 return event
             }
             if let hosting = self.hostingView {

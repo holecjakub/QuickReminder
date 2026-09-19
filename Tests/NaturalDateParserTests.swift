@@ -93,7 +93,17 @@ enum NaturalDateParserTests {
         expect("Mar 12", date(2027, 3, 12), hasTime: false)
         expect("12 March", date(2027, 3, 12), hasTime: false)
         expect("12. 3.", date(2027, 3, 12), hasTime: false)
-        expect("12.3.2026", date(2026, 3, 12), hasTime: false)
+        expectNil("12.3.2026")   // explicit past date is never suggested
+        expect("12.3.2027", date(2027, 3, 12), hasTime: false)
+        expectNil("I sat on the bench")   // bare weekday abbreviations are ordinary words
+        expectNil("mon amour")
+        expect("Buy\u{00A0}milk tomorrow", date(2026, 9, 19), hasTime: false, stripped: "Buy milk")
+        // Mixed shrinking/growing folds must not misalign ranges (ŉ → 2 units, e + U+0301 → 1).
+        if let s = NaturalDateParser.parse("ŉ zítra e\u{301}", now: now, calendar: calendar) {
+            check(s.matchedText == "zítra", "fold alignment: matched \"\(s.matchedText)\"")
+        } else {
+            check(false, "fold alignment: \"ŉ zítra é\" should parse")
+        }
         expect("dentist 3/12", date(2027, 3, 12), hasTime: false, stripped: "dentist")
         expect("zubař 3.12.", date(2026, 12, 3), hasTime: false, stripped: "zubař")
         expect("odevzdat do 5. prosince", date(2026, 12, 5), hasTime: false)

@@ -32,9 +32,9 @@ targets:
             CFBundleURLSchemes:
               - quickreminder
     # Intentionally NOT sandboxed: with com.apple.security.app-sandbox the EventKit XPC
-    # connection fails on this machine (macOS 26.6 / Xcode 27, NSMachErrorDomain 4099) and the
+    # connection fails on macOS 26.6 / Xcode 27 (, NSMachErrorDomain 4099) and the
     # Reminders TCC prompt never appears. Hardened runtime is applied by build.sh.
-    # See PRs/2026-09-18-notch-review.md finding 1.
+    # See SPEC.md §5 for the experiment record.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jholec.QuickReminder

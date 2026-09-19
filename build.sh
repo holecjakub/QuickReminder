@@ -1,9 +1,9 @@
 #!/bin/bash
 # Build QuickReminder.app directly with swiftc, bypassing xcodebuild.
 #
-# `xcodebuild`/`xcrun`/`swift` are blocked on this machine by an un-accepted
-# Xcode license (needs sudo we don't have), so this script drives the
-# toolchain binaries directly instead.
+# `xcodebuild`/`xcrun`/`swift` refuse to run until the Xcode license is accepted
+# (`sudo xcodebuild -license accept`), so this script drives the toolchain binaries
+# directly instead and works either way.
 #
 # Usage:
 #   ./build.sh        - build only
@@ -69,7 +69,7 @@ fi
 
 OPT_FLAGS=(-O -wmo -Xlinker -dead_strip)
 if [[ "$CONFIGURATION" == "Debug" ]]; then
-    OPT_FLAGS=(-Onone -g -enable-batch-mode)
+    OPT_FLAGS=(-Onone -g)   # batch mode fails to emit objects on this driver (Swift 6.4)
 fi
 
 set +e
@@ -131,7 +131,7 @@ fi
 if [[ -z "${SIGN_ID:-}" ]]; then
     # Select by certificate hash so two identities with the same display name can't make
     # codesign ambiguous or alternate between builds (which would invalidate the TCC grant).
-    SIGN_ID="$(security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development/ {print $2; exit}')"
+    SIGN_ID="$( { security find-identity -v -p codesigning 2>/dev/null || true; } | awk '/Apple Development/ {print $2; exit}')"
     SIGN_ID="${SIGN_ID:--}"
 fi
 echo "Code signing (identity: $SIGN_ID)..."

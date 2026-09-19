@@ -196,7 +196,8 @@ struct HotkeyRecorderView: View {
                     .frame(minWidth: 120)
             }
             if registrationFailed {
-                Text("\((HotkeyManager.shared.rejectedShortcut ?? shortcut).displayString) is in use by another app.")
+                Text(HotkeyManager.shared.rejectedShortcut.map { "\($0.displayString) is in use by another app; \(shortcut.displayString) kept." }
+                     ?? "\(shortcut.displayString) is in use by another app.")
                     .font(.caption)
                     .foregroundStyle(.red)
             }

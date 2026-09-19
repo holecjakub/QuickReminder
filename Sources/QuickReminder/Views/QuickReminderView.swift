@@ -127,7 +127,7 @@ struct QuickReminderView: View {
             let cal = Calendar.current
             date = cal.date(bySettingHour: 9, minute: 0, second: 0, of: date) ?? date
             // "today" after 9:00 → next full hour instead of an alarm already in the past.
-            if date < Date() {
+            if cal.isDateInToday(date), date < Date() {
                 date = cal.nextDate(after: Date(), matching: DateComponents(minute: 0, second: 0), matchingPolicy: .nextTime) ?? date
             }
         }

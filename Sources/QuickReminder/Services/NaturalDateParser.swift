@@ -178,8 +178,13 @@ enum NaturalDateParser {
     private static func normalize(_ text: String) -> String {
         // Fast path: fold the whole string at once; fall back to per-character folding only when
         // some character would change its UTF-16 length (the range mapping depends on it).
-        let whole = text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
-        if whole.utf16.count == text.utf16.count { return whole }
+        // Equal totals only prove 1:1 alignment when nothing can shrink (e.g. a decomposed
+        // accent, 2 → 1) while something else grows (ß → ss): so require one UTF-16 unit per
+        // Character before trusting the whole-string fold.
+        if text.utf16.count == text.count {
+            let whole = text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
+            if whole.utf16.count == text.utf16.count { return whole }
+        }
         var out = String()
         out.reserveCapacity(text.count)
         for character in text {
@@ -316,8 +321,11 @@ enum NaturalDateParser {
         "december": 12, "dec": 12, "prosince": 12, "prosinec": 12
     ]
 
-    /// Ordered longest-first so the alternation prefers the full word.
-    private static let weekdayAlternation = weekdayNumbers.keys.sorted { $0.count > $1.count }.joined(separator: "|")
+    /// Ordered longest-first so the alternation prefers the full word. Full names may stand
+    /// alone; three/four-letter abbreviations ("sat", "sun", "mon", "wed" are ordinary words)
+    /// only count after a prefix such as "on" / "next".
+    private static let weekdayFullAlternation = weekdayNumbers.keys.filter { $0.count > 4 }.sorted { $0.count > $1.count }.joined(separator: "|")
+    private static let weekdayAbbrevAlternation = weekdayNumbers.keys.filter { $0.count <= 4 }.sorted { $0.count > $1.count }.joined(separator: "|")
     private static let monthAlternation = monthNumbers.keys.sorted { $0.count > $1.count }.joined(separator: "|")
 
     private static let czechHalfOrdinals: [String: Int] = [
@@ -358,8 +366,10 @@ enum NaturalDateParser {
 
     private static let weekdayRegex = makeRegex(
         boundaryBefore
-        + "(?:(?:on|next|this|upcoming|v|ve|pristi|tento|tuto)\\s+)?"
-        + "(" + weekdayAlternation + ")"
+        + "(?:"
+        + "(?:(?:on|next|this|upcoming|v|ve|pristi|tento|tuto)\\s+)?(" + weekdayFullAlternation + ")"
+        + "|(?:on|next|this|upcoming|v|ve|pristi|tento|tuto)\\s+(" + weekdayAbbrevAlternation + ")"
+        + ")"
         + boundaryAfter
     )
 
@@ -443,7 +453,8 @@ enum NaturalDateParser {
         }
 
         for match in matches(weekdayRegex, text) {
-            guard let name = group(match, 1, in: text), let weekday = weekdayNumbers[name] else { continue }
+            guard let name = group(match, 1, in: text) ?? group(match, 2, in: text),
+                  let weekday = weekdayNumbers[name] else { continue }
             let start = nextWeekday(weekday, after: now, calendar: calendar)
             found.append(Candidate(range: match.range, payload: .day(DayInfo(startOfDay: start, impliedTime: nil))))
         }
@@ -556,8 +567,8 @@ enum NaturalDateParser {
         }
 
         if let year {
-            guard abs(year - thisYear) <= yearWindow else { return nil }
-            return exactDate(in: year)
+            guard abs(year - thisYear) <= yearWindow, let date = exactDate(in: year), date >= today else { return nil }
+            return date
         }
 
         for offset in 0...yearSearchSpan {

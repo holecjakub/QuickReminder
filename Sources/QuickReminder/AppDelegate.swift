@@ -75,6 +75,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
         // Never move keyboard focus while a password field has Secure Event Input enabled.
         guard !IsSecureEventInputEnabled() else { return }
+        // One command per call: several URLs in one `open` must not bypass the limiter.
+        guard let url = urls.first(where: { $0.scheme?.lowercased() == "quickreminder" }) else { return }
         // Debounce (≥ 1 s apart) and cap at 5 commands per minute so a looping page cannot
         // flicker the panel or keep stealing keystrokes.
         let now = Date()
@@ -83,19 +85,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard urlCommandTimes.count < 5 else { return }
         urlCommandTimes.append(now)
 
-        for url in urls {
-            guard url.scheme?.lowercased() == "quickreminder" else { continue }
-            let command = url.host ?? url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            switch command.lowercased() {
-            case "show":
-                PanelController.shared.show()
-            case "toggle":
-                PanelController.shared.toggle()
-            case "hide":
-                PanelController.shared.hide()
-            default:
-                break
-            }
+        let command = url.host ?? url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        switch command.lowercased() {
+        case "show":
+            PanelController.shared.show()
+        case "toggle":
+            PanelController.shared.toggle()
+        case "hide":
+            PanelController.shared.hide()
+        default:
+            break
         }
     }
 }
