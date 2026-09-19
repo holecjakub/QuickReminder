@@ -25,7 +25,8 @@ struct NotchContainerView: View {
                 .frame(width: state.currentSize.width, height: state.currentSize.height)
                 .contentShape(silhouette)
                 .onHover { PanelController.shared.notchHoverChanged($0) }
-                .onTapGesture { PanelController.shared.notchTapped() }
+                // Open on mouse-down (like the old global-monitor path), not on mouse-up.
+                .gesture(DragGesture(minimumDistance: 0).onChanged { _ in PanelController.shared.notchTapped() })
 
             QuickReminderView(
                 notchBandHeight: state.notchBandHeight,

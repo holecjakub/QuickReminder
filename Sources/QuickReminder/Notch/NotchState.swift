@@ -85,6 +85,8 @@ enum NotchLayout {
     /// Hover in: a lively little spring; hover out: a calmer one.
     static let hoverInAnimation: Animation = .spring(response: 0.32, dampingFraction: 0.55, blendDuration: 0)
     static let hoverOutAnimation: Animation = .spring(response: 0.30, dampingFraction: 0.85, blendDuration: 0)
+    /// Pointer must rest on the notch this long before the swell + haptic fire.
+    static let hoverDwell: TimeInterval = 0.09
     /// Margin around the swollen closed notch kept inside the small closed window.
     static let closedCanvasMargin = CGSize(width: 16, height: 8)
 
