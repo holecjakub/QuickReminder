@@ -23,6 +23,7 @@ targets:
         CFBundleVersion: "1"
         LSMinimumSystemVersion: "26.0"
         LSUIElement: true
+        CFBundleIconFile: AppIcon
         NSHighResolutionCapable: true
         NSPrincipalClass: NSApplication
         NSRemindersFullAccessUsageDescription: "QuickReminder needs access to Reminders so you can quickly capture tasks from the floating overlay."

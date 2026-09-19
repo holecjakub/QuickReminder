@@ -2,7 +2,7 @@
 
 A native macOS 26 menu bar app that recreates the **iOS 26 “Quick Reminder” overlay** 1:1 and, because this is a Mac, makes it **grow out of the MacBook notch** (boring.notch / NotchNook style). Triggered by a global hotkey, the notch expands into a wide black panel with the iOS layout; the reminder is saved to Apple Reminders via EventKit and the panel collapses back into the notch.
 
-Reference screenshot: `reference/ios26-quickreminder.png` (iPhone 17 Pro Max, 3×, panel 422 pt wide)
+Design reference: Apple's iOS 26 quick-reminder overlay (measured on an iPhone 17 Pro Max at 3×; panel 422 pt wide). No Apple artwork is kept in the repository; the measurements live in §4.
 Notch research (boring.notch, NotchDrop, DynamicNotchKit): `reference/notch-research.md`
 
 ---

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Colours sampled from the iOS 26 quick-reminder overlay (reference/ios26-quickreminder.png).
+/// Colours sampled from the iOS 26 quick-reminder overlay (see SPEC.md §4).
 enum Theme {
     /// iOS systemBlue in dark mode.
     static let accent = Color(red: 0x0A / 255, green: 0x84 / 255, blue: 0xFF / 255)

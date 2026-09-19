@@ -2,7 +2,7 @@
 
 A macOS 26 menu bar app that recreates the **iOS 26 “Quick Reminder” overlay** 1:1 — and, because we are on a Mac, the panel animates **out of the MacBook notch** (boring.notch / NotchNook style): the black notch grows into a wide panel, you type, hit `⌘↩`, and it collapses back.
 
-Reference: `reference/ios26-quickreminder.png` · Notch research: `reference/notch-research.md`
+Design reference: the iOS 26 quick-reminder overlay, measured metrics in `SPEC.md` §4 · Notch research: `reference/notch-research.md`
 
 ## Build
 
