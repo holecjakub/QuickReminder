@@ -45,6 +45,7 @@ struct PlaceholderTextField: View {
     let font: Font
     let placeholderColor: Color
     let onSubmit: () -> Void
+    @Environment(\.listAccent) private var accent
 
     var body: some View {
         ZStack(alignment: .leading) {
@@ -57,7 +58,7 @@ struct PlaceholderTextField: View {
             TextField("", text: $text)
                 .font(font)
                 .foregroundStyle(.white)
-                .tint(Theme.accent)
+                .tint(accent)
                 .textFieldStyle(.plain)
                 .onSubmit(onSubmit)
         }

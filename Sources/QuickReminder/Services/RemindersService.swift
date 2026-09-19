@@ -1,5 +1,6 @@
 import EventKit
 import Foundation
+import SwiftUI
 
 @MainActor
 final class RemindersService: ObservableObject {
@@ -59,6 +60,12 @@ final class RemindersService: ObservableObject {
             || fresh.map(\.title) != calendars.map(\.title) {
             calendars = fresh
         }
+    }
+
+    /// The list's colour as a SwiftUI colour, or nil when EventKit provides none.
+    func color(for id: String?) -> Color? {
+        guard let cal = calendar(for: id), let cg = cal.cgColor else { return nil }
+        return Color(cgColor: cg)
     }
 
     func calendar(for id: String?) -> EKCalendar? {

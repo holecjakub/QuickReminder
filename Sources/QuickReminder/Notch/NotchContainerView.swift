@@ -5,6 +5,15 @@ import SwiftUI
 /// the content fades/blurs in slightly after the shape leads.
 struct NotchContainerView: View {
     @EnvironmentObject private var state: NotchState
+    @ObservedObject private var reminders = RemindersService.shared
+    @AppStorage("selectedListId") private var selectedListId: String = ""
+
+    /// Colour of the selected reminder list; the content and the saved badge both take it.
+    /// Computed here (not in the content view) so nothing touches PanelController.shared while
+    /// the singleton is still being created at launch.
+    private var accent: Color {
+        reminders.color(for: selectedListId.isEmpty ? nil : selectedListId) ?? Theme.accent
+    }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Shared between the save button and the saved badge so the ✓ flies between them.
     @Namespace private var saveNamespace
@@ -33,6 +42,7 @@ struct NotchContainerView: View {
                 saveNamespace: saveNamespace,
                 saveButtonYielded: state.savedBadgeShown
             )
+                .environment(\.listAccent, accent)
                 .frame(width: state.openSize.width, height: state.openSize.height)
                 .opacity(state.contentVisible ? 1 : 0)
                 .blur(radius: state.contentVisible || reduceMotion ? 0 : 8)
@@ -55,7 +65,7 @@ struct NotchContainerView: View {
 
             // "Saved" badge: lands in the right-hand extension of the collapsed notch.
             if state.savedBadgeShown {
-                SavedCheckView()
+                SavedCheckView(accent: accent)
                     // Fades out in place, a little ahead of the notch shrinking back around it.
                     .opacity(state.isSaving ? 1 : 0)
                     .animation(.easeOut(duration: 0.16), value: state.isSaving)

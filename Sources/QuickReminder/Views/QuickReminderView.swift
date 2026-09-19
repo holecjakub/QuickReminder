@@ -28,6 +28,8 @@ struct QuickReminderView: View {
 
     @FocusState private var titleFocused: Bool
 
+    @Environment(\.listAccent) private var accent
+
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
@@ -157,10 +159,10 @@ struct QuickReminderView: View {
                         .padding(.vertical, 1)
                         .background(RoundedRectangle(cornerRadius: 4).fill(.white.opacity(0.1)))
                 }
-                .foregroundStyle(Theme.accent)
+                .foregroundStyle(accent)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background(Capsule().fill(Theme.accent.opacity(0.14)))
+                .background(Capsule().fill(accent.opacity(0.14)))
                 .contentShape(Capsule())
             }
             .buttonStyle(HoverButtonStyle())
@@ -195,7 +197,7 @@ struct QuickReminderView: View {
             }
             .buttonStyle(.plain)
         }
-        .foregroundStyle(Theme.accent)
+        .foregroundStyle(accent)
         .padding(.leading, Theme.s(21) + 10)
     }
 

@@ -7,6 +7,7 @@ struct HeaderView: View {
     @Binding var selectedListId: String
     @Binding var showListPicker: Bool
     let onClose: () -> Void
+    @Environment(\.listAccent) private var accent
 
     private var selectedListName: String {
         if selectedListId.isEmpty { return "Reminders" }
@@ -22,11 +23,11 @@ struct HeaderView: View {
                 HStack(alignment: .center, spacing: 7) {
                     Text(selectedListName)
                         .font(.system(size: Theme.s(22), weight: .bold))
-                        .foregroundStyle(Theme.accent)
+                        .foregroundStyle(accent)
                         .lineLimit(1)
                     Image(systemName: "chevron.down")
                         .font(.system(size: Theme.s(13), weight: .bold))
-                        .foregroundStyle(Theme.accent)
+                        .foregroundStyle(accent)
                         .offset(y: 0.5)
                 }
                 .contentShape(Rectangle())
