@@ -33,6 +33,23 @@ enum QuickReminderTests {
         check(!r(CGPoint(x: ox - 5, y: 50)), "left of the body is outside")
         check(r(CGPoint(x: ox + 20, y: 50)), "just inside the straight side is inside")
 
+        print("NotchState sizes")
+        let st = NotchState()
+        check(st.hoverSize.width - st.closedSize.width == NotchLayout.hoverGrowth.width
+              && st.hoverSize.height - st.closedSize.height == NotchLayout.hoverGrowth.height, "hover size = closed + growth")
+        check(st.closedCanvasSize.width >= st.hoverSize.width && st.closedCanvasSize.height >= st.hoverSize.height, "closed canvas contains the swollen shape")
+        check(st.closedCanvasSize.width < NotchLayout.canvasSize.width && st.closedCanvasSize.height < NotchLayout.canvasSize.height, "closed canvas is smaller than the open canvas")
+        st.isSaving = true; st.isOpen = true; st.isHovering = true
+        check(st.currentSize == st.savedSize, "currentSize: saving wins")
+        st.isSaving = false
+        check(st.currentSize == st.openSize, "currentSize: open beats hover")
+        st.isOpen = false
+        check(st.currentSize == st.hoverSize, "currentSize: hover beats closed")
+        st.isHovering = false
+        check(st.currentSize == st.closedSize, "currentSize: closed")
+        check(NotchShape.contains(CGPoint(x: st.closedCanvasSize.width / 2, y: st.closedSize.height / 2), canvasWidth: st.closedCanvasSize.width, shapeSize: st.closedSize, topCornerRadius: NotchLayout.closedTopRadius, bottomCornerRadius: NotchLayout.closedBottomRadius), "closed hit test: centre inside")
+        check(!NotchShape.contains(CGPoint(x: 2, y: 10), canvasWidth: st.closedCanvasSize.width, shapeSize: st.closedSize, topCornerRadius: NotchLayout.closedTopRadius, bottomCornerRadius: NotchLayout.closedBottomRadius), "closed hit test: margin outside")
+
         print("NotchLayout")
         check(NotchLayout.openSize.height > 38 + 150, "open panel leaves room for header, input and bottom bar")
         check(NotchLayout.closeDuration >= 0.3, "window stays until the close spring settles")

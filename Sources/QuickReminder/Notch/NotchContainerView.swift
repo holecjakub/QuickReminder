@@ -23,6 +23,10 @@ struct NotchContainerView: View {
             silhouette
                 .fill(Color.black)
                 .frame(width: state.currentSize.width, height: state.currentSize.height)
+                .contentShape(silhouette)
+                .onHover { PanelController.shared.notchHoverChanged($0) }
+                // Open on mouse-down (like the old global-monitor path), not on mouse-up.
+                .gesture(DragGesture(minimumDistance: 0).onChanged { _ in PanelController.shared.notchTapped() })
 
             QuickReminderView(
                 notchBandHeight: state.notchBandHeight,
@@ -63,6 +67,6 @@ struct NotchContainerView: View {
                     .allowsHitTesting(false)
             }
         }
-        .frame(width: NotchLayout.canvasSize.width, height: NotchLayout.canvasSize.height, alignment: .top)
+        .frame(width: state.canvasSize.width, height: state.canvasSize.height, alignment: .top)
     }
 }

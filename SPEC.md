@@ -12,6 +12,7 @@ Notch research (boring.notch, NotchDrop, DynamicNotchKit): `reference/notch-rese
 | Action | Result |
 |--------|--------|
 | Global hotkey (default `⇧⌘R`, configurable) | Notch expands into the panel, title field takes the keyboard. The frontmost app stays active (no app switch, no menu bar change). |
+| Pointer over the physical notch | After a 90 ms dwell (a pointer merely crossing the notch does nothing) the closed silhouette swells by 22 × 5 pt with a lively spring (`response 0.32, damping 0.55`) and the trackpad taps once (`NSHapticFeedbackManager` `.levelChange`); settles back when the pointer leaves. Arming is decided from the pointer position when the notch parks: still on it → wait for it to leave first. Reduce Motion: no swell, haptic only. While parked the window is excluded from screenshots and screen sharing (`sharingType = .none`; `QR_CAPTURE_PARKED=1` for dev captures). |
 | Click on the physical notch | Same as the hotkey |
 | `open quickreminder://show` / `hide` / `toggle` | Same actions for Shortcuts, Raycast, scripts (`quickreminder:///show` also accepted) |
 | Hotkey again, `Esc` (also while typing), click outside the black shape, ⓧ | Collapse without saving; in-progress text discarded |
@@ -78,7 +79,7 @@ Dependencies: AppKit, SwiftUI, EventKit, Carbon. No packages.
 | Close animation | `spring(response 0.30, damping 0.92)`; content `easeOut 0.12`; window ordered out after 0.36 s | — |
 | Saved choreography | shape → `closedSize + 2×72 pt` wide at notch height with `spring(0.45, 0.82)`; ✓ badge 24 pt lands in the right extension via `matchedGeometryEffect`; tick trims in over 0.28 s after 0.32 s, bounce 1.18× at 0.55 s; hold 1.0 s, then `hide()` | Dynamic Island “done” states |
 | No-notch display | virtual pill 200 pt × menu-bar height at top centre | NotchDrop fallback |
-| Window | `.borderless, .nonactivatingPanel`, `.screenSaver`, `[.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]`, `hasShadow = false`, `canBecomeKey = true` | boring.notch |
+| Window | `.borderless, .nonactivatingPanel`, `.screenSaver`, `[.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]`, `hasShadow = false`, `canBecomeKey = true`. On a notched display it stays ordered in permanently: closed = a small window hugging the notch (hover size + 16 × 8 pt margin, so it only intercepts clicks on the notch itself, and SwiftUI `onHover`/tap on the silhouette give hover and click without system-wide mouse polling); open = the full 648 × 238 pt canvas. Displays without a notch keep the order-out behaviour. | boring.notch |
 | Dismissal | global monitor (clicks outside the app) + local monitor (Esc, clicks inside the window but outside the silhouette) | — |
 
 ---

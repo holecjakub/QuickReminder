@@ -18,6 +18,11 @@ final class NotchState: ObservableObject {
     /// The saved badge exists (and the save button yields its geometry) from the moment of
     /// saving until the window is ordered out, so the badge never flies back to the button.
     @Published var savedBadgeShown: Bool = false
+    /// Pointer is over the (closed) notch: the silhouette swells slightly to acknowledge it.
+    @Published var isHovering: Bool = false
+    /// Size of the hosting canvas (= window). Small around the closed notch so the window only
+    /// intercepts clicks on the notch itself; the full canvas while the panel is open.
+    @Published var canvasSize: CGSize = NotchLayout.canvasSize
 
     /// Size of the collapsed silhouette. Slightly larger than the physical notch so
     /// anti-aliased edges never peek out around the bezel.
@@ -30,7 +35,19 @@ final class NotchState: ObservableObject {
 
     var currentSize: CGSize {
         if isSaving { return savedSize }
-        return isOpen ? openSize : closedSize
+        if isOpen { return openSize }
+        if isHovering { return hoverSize }
+        return closedSize
+    }
+
+    /// Closed silhouette, swollen by `NotchLayout.hoverGrowth` while the pointer is over it.
+    var hoverSize: CGSize {
+        CGSize(width: closedSize.width + NotchLayout.hoverGrowth.width, height: closedSize.height + NotchLayout.hoverGrowth.height)
+    }
+
+    /// Window/canvas size while closed: the hover-swollen silhouette plus a small margin.
+    var closedCanvasSize: CGSize {
+        CGSize(width: hoverSize.width + NotchLayout.closedCanvasMargin.width, height: hoverSize.height + NotchLayout.closedCanvasMargin.height)
     }
 
     /// Notch height, widened by `NotchLayout.savedExtension` on each side.
@@ -62,6 +79,16 @@ enum NotchLayout {
     static let savingAnimation: Animation = .spring(response: 0.45, dampingFraction: 0.82, blendDuration: 0)
     /// How long the saved pill stays before the notch returns to normal.
     static let savedHold: TimeInterval = 1.0
+
+    /// How much the closed notch grows on hover (total, both sides / bottom).
+    static let hoverGrowth = CGSize(width: 22, height: 5)
+    /// Hover in: a lively little spring; hover out: a calmer one.
+    static let hoverInAnimation: Animation = .spring(response: 0.32, dampingFraction: 0.55, blendDuration: 0)
+    static let hoverOutAnimation: Animation = .spring(response: 0.30, dampingFraction: 0.85, blendDuration: 0)
+    /// Pointer must rest on the notch this long before the swell + haptic fire.
+    static let hoverDwell: TimeInterval = 0.09
+    /// Margin around the swollen closed notch kept inside the small closed window.
+    static let closedCanvasMargin = CGSize(width: 16, height: 8)
 
     /// Spring used when the panel expands out of the notch.
     static let openAnimation: Animation = .spring(response: 0.42, dampingFraction: 0.78, blendDuration: 0)
