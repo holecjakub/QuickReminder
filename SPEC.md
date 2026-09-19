@@ -1,214 +1,130 @@
 # QuickReminder for macOS — Spec
 
-A native macOS 26 menu bar app that replicates the **iOS 26 Reminders quick-add overlay** 1:1. Triggered by a global hotkey, shows a floating glassy panel for entering a reminder with optional date/location/flag, saves to Apple Reminders via EventKit, then disappears.
+A native macOS 26 menu bar app that recreates the **iOS 26 “Quick Reminder” overlay** 1:1 and, because this is a Mac, makes it **grow out of the MacBook notch** (boring.notch / NotchNook style). Triggered by a global hotkey, the notch expands into a wide black panel with the iOS layout; the reminder is saved to Apple Reminders via EventKit and the panel collapses back into the notch.
 
-Reference screenshot: `reference/ios26-quickreminder.png`
+Design reference: Apple's iOS 26 quick-reminder overlay (measured on an iPhone 17 Pro Max at 3×; panel 422 pt wide). No Apple artwork is kept in the repository; the measurements live in §4.
+Notch research (boring.notch, NotchDrop, DynamicNotchKit): `reference/notch-research.md`
 
 ---
 
-## 1. Product behavior
+## 1. Product behaviour
 
 | Action | Result |
 |--------|--------|
-| Press global hotkey (default `⇧⌘R`) | Overlay panel appears, centered on the screen with the mouse, slightly above center (Spotlight-style); text field is focused; app does **not** activate / steal focus from the frontmost app |
-| Press hotkey again, or `Esc`, or click outside | Panel dismisses; any in-progress text is discarded |
-| Click "Reminders ▾" header | Popover/menu lists all user reminder lists; selection changes target list and persists across launches |
-| Click `×` button (top-right) | Same as Esc — dismiss |
-| Type into "New Reminder" field | Save button becomes enabled (blue) |
-| Type into "Notes" field below | Optional second-line notes |
-| Click calendar+clock pill icon | Opens a small date/time picker popover; selected date shown as a chip |
-| Click location pill icon | (v1) Opens a text field popover for location string; saved as part of notes or via EKStructuredLocation if simple |
-| Click flag pill icon | Toggles flagged state (icon turns orange/filled when on) |
-| Press `⌘↩` or click `✓` button | Saves reminder via EventKit, plays subtle sound or visual confirm, dismisses panel |
-| Menu bar icon → Settings | Configure hotkey via `KeyboardShortcuts.Recorder`, choose default list |
-| Menu bar icon → Quit | Exits app |
+| Global hotkey (default `⇧⌘R`, configurable) | Notch expands into the panel, title field takes the keyboard. The frontmost app stays active (no app switch, no menu bar change). |
+| Click on the physical notch | Same as the hotkey |
+| `open quickreminder://show` / `hide` / `toggle` | Same actions for Shortcuts, Raycast, scripts (`quickreminder:///show` also accepted) |
+| Hotkey again, `Esc` (also while typing), click outside the black shape, ⓧ | Collapse without saving; in-progress text discarded |
+| Type in “New Reminder” | Save button turns blue |
+| Title contains a date/time phrase (EN or CZ: “tomorrow at 2pm”, “zítra ve 14:00”, “v pátek”, “12. března”, “in 2 hours”, “za 30 minut”) | Blue suggestion chip below the input (“Tomorrow, 2:00 PM ⇥”). `Tab` or click applies it (due date set, phrase removed from title); ⓧ dismisses it for that phrase; an un-dismissed suggestion is applied automatically on save, like iOS Reminders. `NaturalDateParser` picks the right-most phrase; day-only phrases default to 9:00. |
+| “Notes” line | Optional notes |
+| “Reminders ▾” | Popover with all reminder lists; selection persists |
+| Calendar icon | Menu: None · Mark as Urgent · Remind Me In 1 Hour · Remind Me Tomorrow · Remind Me Later… (date picker). A blue date chip appears above the bottom bar. |
+| Location icon | Popover with a location text; stored in Notes as `📍 …` (icon becomes `location.fill`) |
+| Flag icon | Toggles flagged (orange `flag.fill`); stored as **High priority** (EventKit exposes no flag) |
+| `⌘↩`, `↩` in a field, or click ✓ | Saves, then the “saved” choreography: content fades, the panel collapses to notch height but stays 72 pt wider on each side, the ✓ flies into the right-hand extension (matched geometry), draws itself in and pops, and after 1.0 s the notch returns to normal. Reduce Motion: plain collapse. |
+| Save fails | Panel stays open, red inline message below Notes, Reminders access re-requested |
+| Menu bar icon → Settings… | Hotkey recorder (rejects bare keys, Esc/click cancels, warns when the combo is taken) + default list |
+| Reopen during the collapse animation | Reverses smoothly from the current shape |
+| Reduce Motion enabled | Plain crossfades, no spring / blur / scale |
 
-**Non-goals (v1):** subtasks, repeats, reminder URL, image attachments, full natural-language parsing (only basic "today/tomorrow at 3pm" if trivial — defer if it adds scope).
+Non-goals (v1): subtasks, repeats, URLs, attachments.
 
 ---
 
 ## 2. Architecture
 
 ```
-QuickReminder/
-├── QuickReminderApp.swift          // @main, App lifecycle, AppDelegate adapter
-├── AppDelegate.swift               // NSStatusItem (menu bar), hotkey registration, panel lifecycle
-├── Panel/
-│   ├── QuickReminderPanel.swift    // NSPanel subclass (.nonactivatingPanel)
-│   └── PanelController.swift       // singleton that owns the panel, shows/hides, centers on active screen
+Sources/QuickReminder/
+├── QuickReminderApp.swift          @main, Settings scene
+├── AppDelegate.swift               NSStatusItem, hotkey wiring, URL scheme, creates PanelController at launch
+├── Panel/PanelController.swift     owns NotchWindow; show/hide/toggle choreography; global + local event monitors; focus fallback
+├── Notch/
+│   ├── NotchWindow.swift           borderless, transparent, non-activating NSPanel at .screenSaver level
+│   ├── NotchShape.swift            notch silhouette Shape + NotchGeometry (real notch rect from NSScreen)
+│   ├── NotchState.swift            ObservableObject (isOpen, contentVisible, sizes) + NotchLayout constants
+│   └── NotchContainerView.swift    black silhouette + masked content
 ├── Views/
-│   ├── QuickReminderView.swift     // root SwiftUI view rendered inside panel
-│   ├── HeaderView.swift            // "Reminders ▾" + close button
-│   ├── InputView.swift             // dashed checkbox + title TextField + notes TextField
-│   ├── BottomBar.swift             // pill with 3 icons + save button
-│   ├── DashedCircle.swift          // custom SwiftUI shape for empty checkbox
-│   ├── ListPickerMenu.swift        // popover/menu listing EKCalendars
-│   └── DatePickerPopover.swift     // small date/time picker
+│   ├── QuickReminderView.swift     root: notch band → header → input → (error/date chip) → bottom bar
+│   ├── HeaderView.swift            “Reminders ▾” + ⓧ
+│   ├── InputView.swift             dotted circle + PlaceholderTextField × 2
+│   ├── BottomBar.swift             pill (date menu, location, flag) + ✓
+│   ├── DashedCircle.swift, Theme.swift, HoverButtonStyle.swift
+│   ├── ListPickerMenu.swift, DatePickerPopover.swift
 ├── Services/
-│   ├── RemindersService.swift      // EventKit wrapper: requestAccess, listCalendars, save
-│   └── Preferences.swift           // @AppStorage wrapper for selected list ID, hotkey
-├── Settings/
-│   └── SettingsView.swift          // SwiftUI settings scene
-├── Resources/
-│   ├── Assets.xcassets             // app icon, menu bar template icon
-│   └── Info.plist                  // LSUIElement, usage descriptions
-└── QuickReminder.entitlements      // sandbox + reminders entitlement
+│   ├── RemindersService.swift      EventKit: access, lists (observes EKEventStoreChanged), save
+│   ├── NaturalDateParser.swift     EN + CZ date/time phrase detection (regex over a diacritics-folded copy)
+│   ├── HotkeyManager.swift         Carbon RegisterEventHotKey (no Accessibility permission) + HotkeyRecorderView
+│   └── Preferences.swift
+└── Settings/SettingsView.swift
+Tests/QuickReminderTests.swift      assertion runner (Scripts/test.sh)
 ```
 
-**Module dependencies:** SwiftUI, AppKit, EventKit, `KeyboardShortcuts` (SPM).
+Dependencies: AppKit, SwiftUI, EventKit, Carbon. No packages.
 
-**Why this structure:** AppKit owns the window because SwiftUI's `WindowGroup` doesn't give us `.nonactivatingPanel` + custom level. The panel hosts a SwiftUI tree via `NSHostingView` wrapped inside `NSGlassEffectView` for the Liquid Glass material.
+**Why AppKit owns the window:** SwiftUI cannot create a non-activating panel above the menu bar. The window frame is always the fully-open size (600 × 214 pt), anchored to the top edge of the built-in display and centred on the notch; everything visible is drawn by SwiftUI, so the window itself is invisible and shadowless like the real notch.
 
 ---
 
-## 3. Visual spec (1:1 with iOS reference)
+## 3. Notch choreography
 
-| Element | Spec |
-|---------|------|
-| **Panel size** | 380×260 pt (initial), grows if notes wrap (max ~360 pt tall) |
-| **Corner radius** | 28 pt |
-| **Background** | `NSGlassEffectView` (macOS 26 Liquid Glass). Fallback for < 26: `NSVisualEffectView` `.hudWindow` `.active`. No solid fill on top. |
-| **Padding** | 24 pt horizontal, 20 pt vertical inside panel |
-| **Header "Reminders"** | SF Pro Display, weight `.bold`, size `28 pt`, color `Color.accentColor` (system blue). Chevron: `Image(systemName: "chevron.down")`, weight `.bold`, same color, ~22 pt, baseline-aligned to title with small leading gap (8 pt) |
-| **Close button** | `Image(systemName: "xmark.circle.fill")`, font size 28 pt, `.symbolRenderingMode(.hierarchical)`, foreground white. Hit area 36×36 pt. |
-| **Dashed checkbox** | Custom `Shape` — `Circle` stroked with `StrokeStyle(lineWidth: 1.5, dash: [3.5, 3])`. Size 24×24 pt. Color: `Color.secondary.opacity(0.6)`. |
-| **Title TextField** | Placeholder "New Reminder", SF Pro Display 22 pt regular. Placeholder color `Color.secondary.opacity(0.55)`. Cursor: system blue. Plain style, no border, no background. |
-| **Notes TextField** | Placeholder "Notes", SF Pro Display 17 pt regular. Placeholder color `Color.secondary.opacity(0.4)`. |
-| **Spacing** | Header → input: 18 pt. Title → notes: 6 pt. Notes → bottom bar: 36 pt (flexible spacer to keep total height ~260). Checkbox → title text: 12 pt. |
-| **Bottom pill** | Capsule shape, height 52 pt, padded inset 18 pt horizontal. Background: `Color.white.opacity(0.08)` over the glass; subtle 1 pt stroke `Color.white.opacity(0.06)`. Width: hugs content. |
-| **Pill icons** | All white, font size 22 pt, weight `.regular`. Icons (left→right): `calendar.badge.clock`, `location.fill`, `flag` (outlined). Spacing between icons: 28 pt. Tap area 36×36 pt each. |
-| **Save button** | Circle, 56×56 pt. Fill `Color.white.opacity(0.12)` when disabled (empty input), `Color.accentColor` when enabled. Inside: `Image(systemName: "checkmark")`, font 22 pt, weight `.semibold`, white. |
-| **Bottom row layout** | HStack: pill on the left, `Spacer()`, save button on the right. Both vertically aligned. |
-| **Toggle states** | Flag icon: filled `flag.fill` with orange tint when active. Date icon: shows blue tint when a date is set, with a small date label chip appearing below the icon row. |
-
-**Animations:**
-- **Show:** fade-in + scale from 0.96 → 1.0 over 0.18 s, easing `.spring(response: 0.35, dampingFraction: 0.78)`
-- **Hide:** fade-out + scale 1.0 → 0.96 over 0.12 s ease-out
-- **Save success:** quick scale bounce of the checkmark (1.0 → 1.15 → 1.0 over 0.2 s), then hide
+| Item | Value | Source |
+|------|-------|--------|
+| Real notch (14" MBP) | 221 × 38 pt, from `safeAreaInsets.top` and `auxiliaryTop{Left,Right}Area` | NotchDrop / DynamicNotchKit |
+| Closed silhouette | notch width + 2 × 6 pt top fillets + 2 pt bleed, 39 pt tall | boring.notch (+4 bleed) |
+| Radii closed / open | top 6 / 19 pt, bottom 14 / 32 pt | boring.notch, iOS reference (bottom) |
+| Open size | 600 × 214 pt (first 38 pt = notch band, dead zone) | — |
+| Open animation | `spring(response 0.42, damping 0.78)` on the shape; content `easeOut 0.20` delayed 0.16 s, blur 8 → 0, scale 0.94 → 1 from top, masked to the live silhouette | DynamicNotchKit transition |
+| Close animation | `spring(response 0.30, damping 0.92)`; content `easeOut 0.12`; window ordered out after 0.36 s | — |
+| Saved choreography | shape → `closedSize + 2×72 pt` wide at notch height with `spring(0.45, 0.82)`; ✓ badge 24 pt lands in the right extension via `matchedGeometryEffect`; tick trims in over 0.28 s after 0.32 s, bounce 1.18× at 0.55 s; hold 1.0 s, then `hide()` | Dynamic Island “done” states |
+| No-notch display | virtual pill 200 pt × menu-bar height at top centre | NotchDrop fallback |
+| Window | `.borderless, .nonactivatingPanel`, `.screenSaver`, `[.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]`, `hasShadow = false`, `canBecomeKey = true` | boring.notch |
+| Dismissal | global monitor (clicks outside the app) + local monitor (Esc, clicks inside the window but outside the silhouette) | — |
 
 ---
 
-## 4. Technical details
+## 4. Visual spec (measured from the iOS reference, applied 1:1)
 
-### Panel
-```swift
-final class QuickReminderPanel: NSPanel {
-    init() {
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: 260),
-            styleMask: [.nonactivatingPanel, .titled, .fullSizeContentView],
-            backing: .buffered, defer: false
-        )
-        titleVisibility = .hidden
-        titlebarAppearsTransparent = true
-        isMovableByWindowBackground = true
-        level = .floating
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        isReleasedWhenClosed = false
-        animationBehavior = .utilityWindow
-        backgroundColor = .clear
-        hasShadow = true
-    }
-    override var canBecomeKey: Bool { true }
-    override func cancelOperation(_ sender: Any?) { PanelController.shared.hide() }
-}
-```
-
-Wrap SwiftUI in `NSGlassEffectView` (macOS 26):
-```swift
-let glass = NSGlassEffectView()
-glass.cornerRadius = 28
-glass.contentView = NSHostingView(rootView: QuickReminderView())
-panel.contentView = glass
-```
-
-### Hotkey
-```swift
-extension KeyboardShortcuts.Name {
-    static let showQuickReminder = Self("showQuickReminder",
-        default: .init(.r, modifiers: [.command, .shift]))
-}
-// In AppDelegate.applicationDidFinishLaunching:
-KeyboardShortcuts.onKeyDown(for: .showQuickReminder) {
-    PanelController.shared.toggle()
-}
-```
-
-### EventKit
-- Call `try await store.requestFullAccessToReminders()` on first launch; if denied, show a small banner with a "Open Settings" button.
-- `store.calendars(for: .reminder)` for list picker.
-- Selected list ID persisted in UserDefaults (`@AppStorage("selectedListId")`).
-- Save:
-  ```swift
-  let r = EKReminder(eventStore: store)
-  r.title = title
-  r.notes = notes.isEmpty ? nil : notes
-  r.calendar = selectedCalendar
-  if let date { r.dueDateComponents = ...; r.addAlarm(.init(absoluteDate: date)) }
-  if flagged { r.priority = EKReminderPriority.high.rawValue }
-  try store.save(r, commit: true)
-  ```
-
-### Click-outside dismiss
-```swift
-NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { _ in
-    PanelController.shared.hide()
-}
-```
-Attach when showing, invalidate when hiding.
-
-### Centering
-```swift
-func screenWithMouse() -> NSScreen {
-    NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }
-        ?? NSScreen.main ?? NSScreen.screens[0]
-}
-// Place at midX, midY + 10% above center (visibleFrame)
-```
+| Element | Value |
+|---------|-------|
+| Background | pure black (merges with the notch); iOS uses #1C1C1E glass |
+| Horizontal padding | 20 pt from the visible edge (+19 pt top fillet inset) |
+| Header | “Reminders” SF Pro 22 pt bold, #0A84FF; chevron 13 pt bold, 7 pt gap |
+| Close ⓧ | 24 pt circle #59595D, `xmark` 11 pt bold white, 36 pt hit area |
+| Dotted circle | 21 pt, 1.5 pt stroke, #59595D, round dots |
+| Title | 19 pt regular, white; placeholder #59595D |
+| Notes | 15 pt regular; placeholder #59595D |
+| Pill | 44 pt tall capsule, fill white 3 %, 1 pt stroke #3D3D3F; icons `calendar.badge.clock` 24 pt, `location` 22 pt, `flag` 22 pt, 38 pt hit areas, 55 pt centre spacing |
+| Save ✓ | 48 pt circle, #474749 disabled / #0A84FF enabled, `checkmark` 22 pt semibold |
+| Active states | date → blue icon + chip; location → `location.fill` blue; flag → `flag.fill` orange (1.0, 0.62, 0.04) |
+| Pointer | hand cursor, 1.06× hover, 0.94× press on every control |
+| Vertical rhythm | notch band 38 → 8 → header → 10 → input → ≥ 14 → bottom bar → 22 bottom |
 
 ---
 
-## 5. Entitlements & Info.plist
+## 5. Signing, privacy, entitlements
 
-**Info.plist additions:**
-```xml
-<key>LSUIElement</key><true/>
-<key>NSRemindersFullAccessUsageDescription</key>
-<string>QuickReminder needs access to Reminders so you can quickly capture tasks from the floating overlay.</string>
-<key>NSRemindersUsageDescription</key>
-<string>QuickReminder needs access to Reminders so you can quickly capture tasks from the floating overlay.</string>
-```
-
-**Entitlements:**
-```xml
-<key>com.apple.security.app-sandbox</key><true/>
-<key>com.apple.security.personal-information.reminders</key><true/>
-```
+- **Intentionally unsandboxed, hardened runtime on.** Experiment on macOS 26.6 / Xcode 27: with `com.apple.security.app-sandbox` + the reminders entitlement, `requestFullAccessToReminders()` fails with `NSMachErrorDomain 4099` and no TCC prompt appears, for an Apple Development identity and ad-hoc, with and without hardened runtime, and after deleting the app's container. Unsandboxed, the same build works. Without the sandbox the reminders entitlement is inert, so none is declared. Re-test on a newer macOS before shipping sandboxed.
+- **URL scheme hardening:** commands are ignored while Secure Event Input is active (password fields), debounced to one per second and capped at five per minute.
+- `build.sh` signs with the “Apple Development” identity when present (TCC grant survives rebuilds), otherwise ad-hoc, always with `--options runtime`, and fails the build if the signature or the runtime flag does not stick.
+- Info.plist: `LSUIElement`, `NSRemindersFullAccessUsageDescription`, `CFBundleURLTypes` (`quickreminder`), `LSMinimumSystemVersion 26.0`.
+- Residual accepted risk: any app or web page can open the panel via `quickreminder://show` (browsers ask before opening a custom scheme); the panel is a 600 pt black card at the top of the screen, so it is not covert, and typed text goes nowhere but Reminders.
 
 ---
 
-## 6. Build & run
+## 6. Build & test
 
-- **Target:** macOS 26.0 minimum (Tahoe), arm64 + x86_64 universal
-- **Tooling:** Xcode 26.5, Swift 6.3.2
-- **Scaffold approach:** Use `xcodegen` (install via brew if missing) + `project.yml` for reproducible project generation. The implementation agent should:
-  1. `brew install xcodegen` if not present
-  2. Author `project.yml`, `Info.plist`, `.entitlements` files
-  3. Run `xcodegen generate` to produce `.xcodeproj`
-  4. `xcodebuild -scheme QuickReminder -configuration Debug build` to verify it compiles
-  5. The compiled `.app` lives under `~/Library/Developer/Xcode/DerivedData/...` — copy to project `build/` for easy testing
-- **Code signing:** Sign with the developer's Apple ID team via automatic signing in `project.yml`. For first run, the user will need to approve in System Settings → Privacy & Security → Reminders.
+- `./build.sh` / `./build.sh run` — direct `swiftc` build (Release: `-O -wmo -dead_strip`; `CONFIGURATION=Debug` for `-Onone -g`) + hand-assembled bundle (works without accepting the Xcode license); `xcodegen generate` keeps the `.xcodeproj` in sync.
+- `Scripts/test.sh` — compiles sources + `Tests/` into a runner: NotchShape geometry, NotchGeometry, NotchLayout, Shortcut encoding.
+- `Scripts/shot.sh <name> [-R x,y,w,h | --full]` — screenshots into `build/shots/` (override with `QR_SHOT_DIR`).
 
 ---
 
 ## 7. Acceptance criteria
 
-The build is "1:1 with iOS" when:
-
-1. Pressing `⇧⌘R` from any app reveals the panel centered on the active screen without switching apps.
-2. The panel's appearance — corner radius, glass material, header typography/color, dashed checkbox shape, pill capsule, save button — matches the reference screenshot side-by-side (manual visual diff by reviewer agent).
-3. Typing a title and pressing `⌘↩` (or clicking ✓) creates a real reminder in Apple Reminders.app in the selected list.
-4. Pressing Esc, clicking outside, or pressing the hotkey again dismisses the panel.
-5. Clicking "Reminders ▾" shows all of the user's reminder lists and selection persists.
-6. Flag, date, and location buttons toggle/open their popovers and the saved reminder reflects the chosen values.
-7. The app is sandboxed and notarization-ready (entitlements correct, Info.plist correct).
+1. `⇧⌘R` from any app makes the notch expand into the panel without switching apps; typing goes into the title field.
+2. Closed state is invisible (only the real notch); mid-animation no content leaks outside the black shape.
+3. Panel matches the iOS reference side by side in typography, colours, spacing and control sizes (§4).
+4. `⌘↩` creates a reminder in the chosen list; Esc / click outside / hotkey collapse it.
+5. List picker, date menu, location popover and flag work and are reflected in the saved reminder.
+6. `Scripts/test.sh` passes; `./build.sh` produces a hardened-runtime-signed bundle.

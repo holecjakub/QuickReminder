@@ -1,18 +1,16 @@
 import SwiftUI
 
-struct DashedCircle: Shape {
-    func path(in rect: CGRect) -> Path {
-        Path(ellipseIn: rect)
-    }
-}
-
+/// The empty "not completed" checkbox ring from iOS Reminders: a dotted circle.
 struct DashedCircleView: View {
+    var size: CGFloat = 21
+
     var body: some View {
-        DashedCircle()
+        Circle()
             .stroke(
-                Color.secondary.opacity(0.6),
-                style: StrokeStyle(lineWidth: 1.5, dash: [3.5, 3])
+                Theme.dashedRing,
+                style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [0.1, 3.2])
             )
-            .frame(width: 24, height: 24)
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
     }
 }
