@@ -19,7 +19,7 @@ Notch research (boring.notch, NotchDrop, DynamicNotchKit): `reference/notch-rese
 | Type in “New Reminder” | Save button turns blue |
 | Title contains a date/time phrase (EN or CZ: “tomorrow at 2pm”, “zítra ve 14:00”, “v pátek”, “12. března”, “in 2 hours”, “za 30 minut”) | Blue suggestion chip below the input (“Tomorrow, 2:00 PM ⇥”). `Tab` or click applies it (due date set, phrase removed from title); ⓧ dismisses it for that phrase; an un-dismissed suggestion is applied automatically on save, like iOS Reminders. `NaturalDateParser` picks the right-most phrase; day-only phrases default to 9:00. |
 | “Notes” line | Optional notes |
-| “Reminders ▾” | Popover with all reminder lists; selection persists |
+| “Reminders ▾” | Popover with all reminder lists; selection persists. The list's colour becomes the panel accent: header, chevron, ✓, date chips, caret, active icons and the saved badge (iOS blue when EventKit has no colour). |
 | Calendar icon | Menu: None · Mark as Urgent · Remind Me In 1 Hour · Remind Me Tomorrow · Remind Me Later… (date picker). A blue date chip appears above the bottom bar. |
 | Location icon | Popover with a location text; stored in Notes as `📍 …` (icon becomes `location.fill`) |
 | Flag icon | Toggles flagged (orange `flag.fill`); stored as **High priority** (EventKit exposes no flag) |
@@ -98,8 +98,8 @@ Dependencies: AppKit, SwiftUI, EventKit, Carbon. No packages.
 | Pill | 44 pt tall capsule, fill white 3 %, 1 pt stroke #3D3D3F; icons `calendar.badge.clock`, `location`, `flag` rendered through AppKit's `NSImage.SymbolConfiguration` at 22 pt (optically balanced: 26 × 21.5 / 21 × 20 / 19 × 21 pt visible — SwiftUI's `Image(systemName:)` draws the badge symbol markedly smaller), 38 pt hit areas, 55 pt centre spacing |
 | Save ✓ | 48 pt circle, #474749 disabled / #0A84FF enabled, `checkmark` 22 pt semibold |
 | Active states | date → blue icon + chip; location → `location.fill` blue; flag → `flag.fill` orange (1.0, 0.62, 0.04) |
-| Pointer | hand cursor, 1.06× hover, 0.94× press on every control |
-| Vertical rhythm | notch band 38 → 8 → header → 10 → input → ≥ 14 → bottom bar → 22 bottom |
+| Pointer | hand cursor. Pill icons (calendar, location, flag): macOS HIG hover feedback, a circular highlight (white 10 %, 18 % pressed, 0.12 s fade), no scaling so the row never shifts. Round controls (ⓧ, ✓, header, chips): 1.06× hover / 0.94× press spring, hit-tested on the layout frame. The date options open as a native `NSMenu` from a plain button (a SwiftUI `Menu` with the borderless style brought its own AppKit hover chrome and resized on hover). |
+| Vertical rhythm | notch band 38 → 8 → header → 10 → input → flexible → fixed 26 pt slot for the date chip / suggestion / error → 8 → bottom bar → 22 bottom. The slot is always reserved, so the bar never moves when a chip appears. |
 | Text size | Every font and control metric is multiplied by `NotchLayout.textScale` = system body size ÷ 13 (System Settings → Accessibility → Display → Text size, incl. per-app), clamped 0.85–1.6; the open panel height scales with it (`38 + 176 × scale`), width up to 1.3×. Display scaling (Displays → resolution) needs nothing: all geometry is in points and the notch is read live from `NSScreen`. `QR_TEXT_SCALE=1.3` forces a scale for layout checks. |
 
 ---

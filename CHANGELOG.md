@@ -4,6 +4,9 @@ All notable changes to QuickReminder. Format: [Keep a Changelog](https://keepach
 
 ## Unreleased
 
+- The panel takes the selected reminder list's colour (header, ✓, chips, caret, saved badge).
+- Hover feedback follows macOS HIG: a soft highlight behind controls instead of scaling; the date menu is a native popup from a plain button, so the pill row no longer shifts on hover.
+
 - Pill icons (calendar, location, flag) are optically the same size: rendered through AppKit's symbol configuration instead of SwiftUI's symbol image, which drew the badge symbol much smaller.
 - The panel respects the system text size (Accessibility → Display → Text size): fonts, controls and the panel height scale with it.
 - Panel state machine extracted into a pure `NotchMachine` reducer with exhaustive sequence tests; unit tests moved to Swift Testing (`swift test`, SwiftPM `QuickReminderCore` target).

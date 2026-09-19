@@ -12,6 +12,7 @@ struct BottomBar: View {
     @Binding var showCustomDatePicker: Bool
     let saveNamespace: Namespace.ID
     let saveButtonYielded: Bool
+    @Environment(\.listAccent) private var accent
 
     private let iconSize: CGFloat = 22
     private let hitSize: CGFloat = 38
@@ -49,7 +50,7 @@ struct BottomBar: View {
     /// Only the badge symbol needs the AppKit path; `flag` / `location` stay SwiftUI symbols so
     /// `.contentTransition(.symbolEffect(.replace))` keeps animating their fill toggle.
     @ViewBuilder
-    private func icon(_ name: String, active: Bool, activeColor: Color = Theme.accent) -> some View {
+    private func icon(_ name: String, active: Bool, activeColor: Color? = nil) -> some View {
         Group {
             if name.contains(".badge.") {
                 Image(nsImage: Self.symbolImage(name, pointSize: Theme.s(iconSize)))
@@ -60,7 +61,7 @@ struct BottomBar: View {
                     .symbolRenderingMode(.monochrome)
             }
         }
-        .foregroundStyle(active ? activeColor : .white)
+        .foregroundStyle(active ? (activeColor ?? accent) : .white)
         .frame(width: Theme.s(hitSize), height: Theme.s(hitSize))
         .contentShape(Rectangle())
     }
@@ -80,35 +81,26 @@ struct BottomBar: View {
         return image
     }
 
+    @State private var dateMenuPresenter = PopUpMenu()
+
     private var dateMenu: some View {
-        Menu {
-            Button { dueDate = nil } label: {
-                Label("None", systemImage: "calendar.badge.minus")
-            }
-            Divider()
-            Button {
-                flagged = true
-                dueDate = Date().addingTimeInterval(60 * 60)
-            } label: {
-                Label("Mark as Urgent", systemImage: "alarm")
-            }
-            Button { dueDate = Date().addingTimeInterval(60 * 60) } label: {
-                Label("Remind Me In 1 Hour", systemImage: "clock")
-            }
-            Button { dueDate = tomorrowAt9AM() } label: {
-                Label("Remind Me Tomorrow", systemImage: "calendar")
-            }
-            Divider()
-            Button { showCustomDatePicker = true } label: {
-                Label("Remind Me Later…", systemImage: "calendar")
-            }
+        Button {
+            dateMenuPresenter.show([
+                .action("None", systemImage: "calendar.badge.minus") { dueDate = nil },
+                .separator,
+                .action("Mark as Urgent", systemImage: "alarm") {
+                    flagged = true
+                    dueDate = Date().addingTimeInterval(60 * 60)
+                },
+                .action("Remind Me In 1 Hour", systemImage: "clock") { dueDate = Date().addingTimeInterval(60 * 60) },
+                .action("Remind Me Tomorrow", systemImage: "calendar") { dueDate = tomorrowAt9AM() },
+                .separator,
+                .action("Remind Me Later…", systemImage: "calendar") { showCustomDatePicker = true },
+            ])
         } label: {
             icon("calendar.badge.clock", active: dueDate != nil)
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .hoverScale()
+        .buttonStyle(HoverHighlightButtonStyle())
         .accessibilityLabel("Add date")
         .popover(isPresented: $showCustomDatePicker, arrowEdge: .bottom) {
             DatePickerPopover(selectedDate: $dueDate, isPresented: $showCustomDatePicker)
@@ -120,7 +112,7 @@ struct BottomBar: View {
             icon(locationText.isEmpty ? "location" : "location.fill", active: !locationText.isEmpty)
                 .contentTransition(.symbolEffect(.replace))
         }
-        .buttonStyle(HoverButtonStyle())
+        .buttonStyle(HoverHighlightButtonStyle())
         .accessibilityLabel("Add location")
         .popover(isPresented: $showLocationField, arrowEdge: .bottom) {
             locationPopover
@@ -134,7 +126,7 @@ struct BottomBar: View {
             icon(flagged ? "flag.fill" : "flag", active: flagged, activeColor: Theme.flagOrange)
                 .contentTransition(.symbolEffect(.replace))
         }
-        .buttonStyle(HoverButtonStyle())
+        .buttonStyle(HoverHighlightButtonStyle())
         .accessibilityLabel("Toggle flag")
     }
 
@@ -149,7 +141,7 @@ struct BottomBar: View {
                 Button(action: handleSave) {
                     ZStack {
                         Circle()
-                            .fill(canSave ? Theme.accent : Theme.grayCircleDisabled)
+                            .fill(canSave ? accent : Theme.grayCircleDisabled)
                         Image(systemName: "checkmark")
                             .font(.system(size: Theme.s(22), weight: .semibold))
                             .foregroundStyle(.white)

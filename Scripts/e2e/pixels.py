@@ -99,6 +99,23 @@ def cmd_color_count(args):
     print(count)
 
 
+def cmd_saturated_count(args):
+    """Count clearly coloured pixels (any hue) in a region: catches the list-coloured chip
+    regardless of which reminder list is selected."""
+    png, x, y, w, h = args[0], float(args[1]), float(args[2]), float(args[3]), float(args[4])
+    min_chroma = int(args[5]) if len(args) > 5 else 80
+    img = load(png)
+    px = img.load()
+    x0, y0, x1, y1 = _px_rect(img, x, y, w, h)
+    count = 0
+    for yy in range(y0, y1):
+        for xx in range(x0, x1):
+            r, g, b = px[xx, yy]
+            if max(r, g, b) - min(r, g, b) >= min_chroma and max(r, g, b) >= 120:
+                count += 1
+    print(count)
+
+
 def cmd_silhouette_width(args):
     png, y_pt = args[0], float(args[1])
     max_channel = int(args[2]) if len(args) > 2 else 20
@@ -131,7 +148,7 @@ def cmd_silhouette_width(args):
 
 def main():
     if len(sys.argv) < 2:
-        print("usage: pixels.py <dark_count|bright_count|color_count|silhouette_width> ...", file=sys.stderr)
+        print("usage: pixels.py <dark_count|bright_count|color_count|saturated_count|silhouette_width> ...", file=sys.stderr)
         sys.exit(1)
     cmd = sys.argv[1]
     args = sys.argv[2:]
@@ -142,6 +159,8 @@ def main():
             cmd_bright_count(args)
         elif cmd == "color_count":
             cmd_color_count(args)
+        elif cmd == "saturated_count":
+            cmd_saturated_count(args)
         elif cmd == "silhouette_width":
             cmd_silhouette_width(args)
         else:

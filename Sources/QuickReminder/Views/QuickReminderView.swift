@@ -28,6 +28,8 @@ struct QuickReminderView: View {
 
     @FocusState private var titleFocused: Bool
 
+    @Environment(\.listAccent) private var accent
+
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
@@ -52,26 +54,28 @@ struct QuickReminderView: View {
             )
             .padding(.top, 10)
 
-            Spacer(minLength: 14)
+            Spacer(minLength: 0)
 
-            if let saveErrorText {
-                Text(saveErrorText)
-                    .font(.system(size: Theme.s(12), weight: .medium))
-                    .foregroundStyle(Color(red: 1.0, green: 0.27, blue: 0.23))
-                    .padding(.leading, Theme.s(21) + 10)
-                    .padding(.bottom, 8)
-                    .transition(.opacity)
+            // Fixed-height slot for the date chip / suggestion / error, so the bottom bar never
+            // jumps when one of them appears (iOS keeps this gap empty until a date is set).
+            ZStack(alignment: .bottomLeading) {
+                Color.clear
+                if let saveErrorText {
+                    Text(saveErrorText)
+                        .font(.system(size: Theme.s(12), weight: .medium))
+                        .foregroundStyle(Color(red: 1.0, green: 0.27, blue: 0.23))
+                        .padding(.leading, Theme.s(21) + 10)
+                        .transition(.opacity)
+                } else if let date = dueDate {
+                    dateChip(date)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                } else if let suggestion {
+                    suggestionChip(suggestion)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
             }
-
-            if let date = dueDate {
-                dateChip(date)
-                    .padding(.bottom, 8)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-            } else if let suggestion {
-                suggestionChip(suggestion)
-                    .padding(.bottom, 8)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-            }
+            .frame(height: Theme.s(26))
+            .padding(.bottom, 8)
 
             BottomBar(
                 dueDate: $dueDate,
@@ -157,10 +161,10 @@ struct QuickReminderView: View {
                         .padding(.vertical, 1)
                         .background(RoundedRectangle(cornerRadius: 4).fill(.white.opacity(0.1)))
                 }
-                .foregroundStyle(Theme.accent)
+                .foregroundStyle(accent)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background(Capsule().fill(Theme.accent.opacity(0.14)))
+                .background(Capsule().fill(accent.opacity(0.14)))
                 .contentShape(Capsule())
             }
             .buttonStyle(HoverButtonStyle())
@@ -195,7 +199,7 @@ struct QuickReminderView: View {
             }
             .buttonStyle(.plain)
         }
-        .foregroundStyle(Theme.accent)
+        .foregroundStyle(accent)
         .padding(.leading, Theme.s(21) + 10)
     }
 

@@ -4,13 +4,14 @@ import SwiftUI
 /// Used as the landing target of the save button during the "saved" phase.
 struct SavedCheckView: View {
     var size: CGFloat = NotchLayout.savedBadgeSize
+    var accent: Color = Theme.accent
     @State private var progress: CGFloat = 0
     @State private var bounce: CGFloat = 1
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
-            Circle().fill(Theme.accent)
+            Circle().fill(accent)
             CheckmarkShape()
                 .trim(from: 0, to: progress)
                 .stroke(Color.white, style: StrokeStyle(lineWidth: size * 0.11, lineCap: .round, lineJoin: .round))
