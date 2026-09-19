@@ -280,15 +280,15 @@ final class PanelController {
         guard machine.isVisible, !state.isSaving, let window, let hostingView else { return }
         if window.firstResponder is NSTextView { return }
         window.makeKey()
-        if let field = Self.firstTextField(in: hostingView) {
+        if let field = Self.titleTextView(in: hostingView) {
             window.makeFirstResponder(field)
         }
     }
 
-    private static func firstTextField(in view: NSView) -> NSTextField? {
+    private static func titleTextView(in view: NSView) -> NSTextView? {
         for sub in view.subviews {
-            if let field = sub as? NSTextField, field.isEditable { return field }
-            if let found = firstTextField(in: sub) { return found }
+            if let tv = sub as? NSTextView, tv.accessibilityIdentifier() == "title" { return tv }
+            if let found = titleTextView(in: sub) { return found }
         }
         return nil
     }

@@ -26,7 +26,6 @@ struct QuickReminderView: View {
     @State private var suggestion: DateSuggestion? = nil
     @State private var dismissedSuggestionText: String? = nil
 
-    @FocusState private var titleFocused: Bool
 
     @Environment(\.listAccent) private var accent
 
@@ -48,7 +47,6 @@ struct QuickReminderView: View {
             InputView(
                 title: $title,
                 notes: $notes,
-                titleFocused: $titleFocused,
                 onSubmit: { if canSave { saveReminder() } },
                 onTab: { applySuggestionIfAny() }
             )
@@ -94,10 +92,8 @@ struct QuickReminderView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onReceive(NotificationCenter.default.publisher(for: .panelWillShow)) { _ in
             resetState()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { titleFocused = true }
         }
         .onReceive(NotificationCenter.default.publisher(for: .panelDidHide)) { _ in
-            titleFocused = false
             showListPicker = false
             showLocationField = false
             showCustomDatePicker = false
