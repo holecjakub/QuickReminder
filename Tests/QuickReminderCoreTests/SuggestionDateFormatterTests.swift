@@ -13,8 +13,18 @@ struct SuggestionDateFormatterTests {
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: Date())!
         let formatter = SuggestionDateFormatter()
         let label = formatter.string(from: tomorrow, hasTime: true)
-        #expect(label.localizedCaseInsensitiveContains("tomorrow") || label.localizedCaseInsensitiveContains("zítra"),
-                "expected a relative 'Tomorrow' label, got \"\(label)\"")
+        // Locale-proof: the contract is "relative day name + short time" in the current locale.
+        let reference = DateFormatter()
+        reference.locale = .autoupdatingCurrent
+        reference.doesRelativeDateFormatting = true
+        reference.dateStyle = .medium
+        reference.timeStyle = .short
+        #expect(label == reference.string(from: tomorrow), "got \"\(label)\"")
+        let absolute = DateFormatter()
+        absolute.locale = .autoupdatingCurrent
+        absolute.dateStyle = .medium
+        absolute.timeStyle = .short
+        #expect(label != absolute.string(from: tomorrow), "label should be relative (\"Tomorrow …\"), got \"\(label)\"")
     }
 
     @Test func dateOnlyOmitsTime() {

@@ -46,19 +46,37 @@ struct BottomBar: View {
     /// (measured at 22 pt: calendar.badge.clock 25.5 × 21.5, location 21 × 20, flag 20.5 × 20.5),
     /// whereas the SwiftUI symbol image draws the badge symbol markedly smaller. Template images
     /// take the foreground style, so active colours keep working.
+    /// Only the badge symbol needs the AppKit path; `flag` / `location` stay SwiftUI symbols so
+    /// `.contentTransition(.symbolEffect(.replace))` keeps animating their fill toggle.
+    @ViewBuilder
     private func icon(_ name: String, active: Bool, activeColor: Color = Theme.accent) -> some View {
-        Image(nsImage: Self.symbolImage(name, pointSize: Theme.s(iconSize)))
-            .renderingMode(.template)
-            .foregroundStyle(active ? activeColor : .white)
-            .frame(width: Theme.s(hitSize), height: Theme.s(hitSize))
-            .contentShape(Rectangle())
+        Group {
+            if name.contains(".badge.") {
+                Image(nsImage: Self.symbolImage(name, pointSize: Theme.s(iconSize)))
+                    .renderingMode(.template)
+            } else {
+                Image(systemName: name)
+                    .font(.system(size: Theme.s(iconSize), weight: .regular))
+                    .symbolRenderingMode(.monochrome)
+            }
+        }
+        .foregroundStyle(active ? activeColor : .white)
+        .frame(width: Theme.s(hitSize), height: Theme.s(hitSize))
+        .contentShape(Rectangle())
     }
 
-    private static func symbolImage(_ name: String, pointSize: CGFloat) -> NSImage {
+    /// Cached per name + size: a fresh NSImage per body would re-rasterise on every render
+    /// (~160 µs each), and a stable object lets `Image(nsImage:)` skip the redraw entirely.
+    @MainActor private static var symbolCache: [String: NSImage] = [:]
+
+    @MainActor private static func symbolImage(_ name: String, pointSize: CGFloat) -> NSImage {
+        let key = "\(name)@\(pointSize)"
+        if let cached = symbolCache[key] { return cached }
         let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
         let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(config) ?? NSImage()
         image.isTemplate = true
+        symbolCache[key] = image
         return image
     }
 

@@ -53,6 +53,8 @@ TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 RUN_DIR="$ROOT/build/e2e/$TIMESTAMP"
 SHOT_DIR="$RUN_DIR"
 LOG_DIR="$RUN_DIR/logs"
+# Retention: keep the five most recent run directories (each is ~10 MB of screenshots).
+ls -1dt "$ROOT"/build/e2e/*/ 2>/dev/null | tail -n +6 | xargs rm -rf 2>/dev/null || true
 mkdir -p "$SHOT_DIR" "$LOG_DIR"
 
 # shellcheck source=Scripts/e2e/lib.sh
@@ -66,13 +68,22 @@ PREVIOUS_BUNDLE=""
 # ---------------------------------------------------------------- preconditions
 
 precondition_display() {
-    if ! system_profiler SPDisplaysDataType 2>/dev/null | grep -qi "built-in.*retina\|retina.*built-in"; then
-        HAS_NOTCH_DISPLAY=0
-        echo "note: no built-in Retina display detected -- hover/notch scenarios will SKIP" >&2
+    init_geometry
+    if [[ "$HAS_NOTCH_DISPLAY" -ne 1 ]]; then
+        echo "note: no notched built-in display -- hover/notch scenarios will SKIP" >&2
+    else
+        echo "Display: notch at x=$NOTCH_X, height ${NOTCH_H}pt; panel region $PANEL_REGION" >&2
     fi
+    python3 -c 'import PIL' 2>/dev/null || { echo "error: Pillow is required (pip3 install Pillow)" >&2; exit 2; }
 }
 
 precondition_app() {
+    # Skip the (~5 s, non-incremental) rebuild when the bundle is newer than every source.
+    if [[ "$NO_BUILD" -eq 0 && -x "$APP_BIN" ]] \
+        && [[ -z "$(find "$ROOT/Sources" "$ROOT/Resources" "$ROOT/build.sh" -newer "$APP_BIN" -print -quit 2>/dev/null)" ]]; then
+        echo "Build is up to date, skipping ./build.sh." >&2
+        NO_BUILD=1
+    fi
     if [[ "$NO_BUILD" -eq 0 ]]; then
         echo "Building QuickReminder.app..." >&2
         (cd "$ROOT" && ./build.sh) >"$LOG_DIR/build.log" 2>&1 || {
@@ -125,7 +136,9 @@ launch_test_instance() {
     fi
     pkill -x QuickReminder 2>/dev/null || true
     sleep 0.4
-    QR_CAPTURE_PARKED=1 "$APP_BIN" >"$LOG_DIR/app.log" 2>&1 &
+    # The dev build shares UserDefaults with the installed app; force the default ⇧⌘R hotkey
+    # through the argument domain (a non-Data value makes HotkeyManager fall back to .default).
+    QR_CAPTURE_PARKED=1 "$APP_BIN" -hotkey e2e-default >"$LOG_DIR/app.log" 2>&1 &
     disown
     sleep 1.2
     if ! pgrep -x QuickReminder >/dev/null; then
@@ -157,7 +170,13 @@ trap cleanup EXIT
 # ---------------------------------------------------------------- scenario helpers
 
 reset_to_closed() {
-    press_escape
+    # Esc goes to the frontmost app when the panel is closed, so only send it when a quick
+    # dark-region check says the panel (or its collapse) is on screen.
+    local png; png=$(shot "reset_probe")
+    local n; n=$(dark_count "$png" 0 0 600 214 20)
+    if [[ "$n" -ge "$DARK_CLOSED_MAX" ]]; then
+        press_escape
+    fi
     move_to 500 500
     sleep 0.4
 }
@@ -243,18 +262,13 @@ click_notch_opens() {
         fail "SKIP:no built-in notch display"
         return 2
     fi
-    move_to 901 15
+    move_to "$NOTCH_X" 15
     sleep 0.8
-    click_at 901 15
+    click_at "$NOTCH_X" 15
     sleep 0.6
-    if ! assert_open "click_notch_opens_open"; then
-        # The tap gesture occasionally misses if it lands mid hover-swell
-        # animation; one retry clears this without masking a real failure.
-        log_step "retrying click on notch once"
-        click_at 901 15
-        sleep 0.6
-        assert_open "click_notch_opens_retry" || return 1
-    fi
+    # No retry on purpose: the click is handled by NotchWindow.sendEvent on mouse-down
+    # (the earlier SwiftUI gesture could miss mid hover-swell); a miss here is a regression.
+    assert_open "click_notch_opens_open" || return 1
     press_escape
     sleep 0.6
     move_to 500 500
@@ -269,8 +283,8 @@ hover_swell() {
     move_to 500 500
     sleep 0.3
     local baseline; baseline=$(measure_width "hover_swell_baseline")
-    move_to 890 10
-    move_to 900 15
+    move_to "$(( NOTCH_X - 10 ))" 10
+    move_to "$NOTCH_X" 15
     sleep 0.5
     local hovered; hovered=$(measure_width "hover_swell_hovered")
     log_step "width baseline=$baseline hovered=$hovered"
@@ -303,7 +317,7 @@ quick_crossing_no_swell() {
     # Two moves back-to-back with no intervening sleep: the HID enter/leave
     # gap lands well under the app's 90ms hover dwell, so no swell should
     # ever be armed.
-    move_to 900 15
+    move_to "$NOTCH_X" 15
     move_to 500 500
     sleep 0.3
     local after; after=$(measure_width "quick_crossing_after")
@@ -329,7 +343,7 @@ margin_click_closes() {
     hotkey_toggle
     sleep 0.8
     assert_open "margin_click_closes_open" || return 1
-    click_at 610 120
+    click_at "$(( PANEL_LEFT + 9 ))" 120
     sleep 0.6
     assert_closed "margin_click_closes_closed" || return 1
 }
@@ -432,11 +446,12 @@ run_scenario() {
     fi
 }
 
-precondition_display
 precondition_app
 precondition_osascript
 precondition_click_tool
+precondition_display
 launch_test_instance
+measure_baseline
 
 echo "Screenshots + logs: $RUN_DIR" >&2
 

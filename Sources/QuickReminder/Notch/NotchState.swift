@@ -64,17 +64,29 @@ enum NotchLayout {
     /// scales with the text; width grows a little too so long titles keep their room.
     @MainActor static var openSize: CGSize {
         let s = textScale
+        // 38 pt notch band + 54 pt of fixed vertical rhythm (8 + 10 + 14 + 22) + 122 pt of content that scales.
+        let fixed: CGFloat = 38 + 54
         return CGSize(width: (baseOpenSize.width * min(1 + (s - 1) * 0.5, 1.3)).rounded(),
-                      height: (38 + (baseOpenSize.height - 38) * s).rounded())
+                      height: (fixed + (baseOpenSize.height - fixed) * s).rounded())
     }
     /// System text size (System Settings → Accessibility → Display → Text size, or per-app),
     /// relative to the default 13 pt body. Read live so every open reflects the current setting.
     @MainActor static var textScale: CGFloat {
-        if let raw = ProcessInfo.processInfo.environment["QR_TEXT_SCALE"], let forced = Double(raw) {
-            return max(0.85, min(CGFloat(forced), 1.6))   // dev override for layout checks
-        }
+        if let forcedScale { return forcedScale }
         let body = NSFont.preferredFont(forTextStyle: .body).pointSize
         return max(0.85, min(body / 13, 1.6))
+    }
+    /// `QR_TEXT_SCALE` dev override, read once (the environment cannot change while running).
+    private static let forcedScale: CGFloat? = ProcessInfo.processInfo.environment["QR_TEXT_SCALE"]
+        .flatMap(Double.init).map { max(0.85, min(CGFloat($0), 1.6)) }
+
+    /// `textScale` as sampled by the controller on every show / screen change; views read this
+    /// (via `Theme.s`) so a body evaluation costs nothing, while every open still reflects the
+    /// current system setting.
+    @MainActor static var cachedTextScale: CGFloat = 1
+
+    @MainActor static func refreshTextScale() {
+        cachedTextScale = textScale
     }
     /// Extra room around the open panel so the bouncy spring's ~2 % overshoot is not clipped
     /// by the window edge (notch-research.md: "a bouncy spring overshoots the mask").

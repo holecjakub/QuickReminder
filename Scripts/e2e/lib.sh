@@ -12,14 +12,43 @@
 #  - $CLICK is the path to the compiled click helper (Scripts/click.swift).
 #  - $PIXELS is `python3 Scripts/e2e/pixels.py`.
 
+# Defaults for a 14" MacBook Pro; overwritten by init_geometry from `click geometry`.
+NOTCH_X=901
+NOTCH_H=38
+PANEL_W=600
+PANEL_H=214
+PANEL_LEFT=601
 PANEL_REGION="601,0,600,214"
 
-# Thresholds calibrated by hand against this machine's build (see
-# docs/testing.md for how they were derived). They have generous margin:
-# a fully open panel measures ~459k dark px in the full 600x214 region;
-# closed (even hover-swollen) measures ~35k-45k.
+# init_geometry -- derive every coordinate from the built-in display (requires $CLICK).
+init_geometry() {
+    local geo; geo=$("$CLICK" geometry 2>/dev/null || echo "")
+    [[ -n "$geo" ]] || return 0
+    local _w _h nx has
+    read -r _w _h NOTCH_H nx has <<<"$geo"
+    HAS_NOTCH_DISPLAY="$has"
+    NOTCH_X=$(printf '%.0f' "$nx")
+    PANEL_LEFT=$(( NOTCH_X - PANEL_W / 2 ))
+    PANEL_REGION="$PANEL_LEFT,0,$PANEL_W,$PANEL_H"
+    [[ "$NOTCH_H" -gt 0 ]] || NOTCH_H=38
+}
+
+# Thresholds are relative to a closed baseline measured once after launch
+# (measure_baseline); the absolute defaults keep working on a plain wallpaper.
+# A fully open panel adds ~420k dark px over the 600x214 region; the parked
+# silhouette (even hover-swollen) stays within ~45k of the baseline.
+DARK_BASELINE=0
 DARK_OPEN_MIN=150000
 DARK_CLOSED_MAX=100000
+
+# measure_baseline -- sample the closed state once and shift the thresholds accordingly.
+measure_baseline() {
+    local png; png=$(shot "baseline_closed")
+    DARK_BASELINE=$(dark_count "$png" 0 0 600 214 20)
+    DARK_OPEN_MIN=$(( DARK_BASELINE + 100000 ))
+    DARK_CLOSED_MAX=$(( DARK_BASELINE + 60000 ))
+    log_step "closed baseline dark=$DARK_BASELINE open>=$DARK_OPEN_MIN closed<=$DARK_CLOSED_MAX"
+}
 
 log_step() {
     echo "    ... $*" >&2

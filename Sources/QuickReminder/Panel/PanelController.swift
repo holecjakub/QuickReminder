@@ -81,7 +81,6 @@ final class PanelController {
 
     /// Returns true when the click was consumed (the closed notch opened); false lets the
     /// event continue to the views (buttons etc.) while the panel is open.
-    @discardableResult
     func notchTapped() -> Bool {
         guard case .closed(parked: true) = machine.phase, let screen = targetScreen() else { return false }
         dispatch(.notchTapped, on: screen)
@@ -326,6 +325,7 @@ final class PanelController {
     }
 
     private func configureGeometry(for screen: NSScreen) {
+        NotchLayout.refreshTextScale()
         setClosedSize(NotchGeometry.closedShapeSize(for: screen, topCornerRadius: NotchLayout.closedTopRadius))
         if state.openSize != NotchLayout.openSize { state.openSize = NotchLayout.openSize }
     }
@@ -377,8 +377,7 @@ final class PanelController {
         window.makeFirstResponder(nil)
         // The bleed around the notch stays out of screenshots / screen sharing while parked.
         // QR_CAPTURE_PARKED=1 keeps it capturable for development screenshots.
-        window.sharingType = ProcessInfo.processInfo.environment["QR_CAPTURE_PARKED"] == "1" ? .readOnly : .none
-        window.ignoresMouseEvents = false
+        window.sharingType = Self.captureParked ? .readOnly : .none
         // orderOut + orderFront in one turn hands key status back to the previous key window
         // without a visible flicker.
         window.orderOut(nil)
@@ -387,7 +386,13 @@ final class PanelController {
         // animates instead of waiting for the first ordinary redraw.
         window.contentView?.layoutSubtreeIfNeeded()
         window.displayIfNeeded()
+        // Accept mouse/tracking events only now: a hover exit synthesised while the window was
+        // being ordered would otherwise re-arm the hover the machine just disarmed.
+        window.ignoresMouseEvents = false
     }
+
+    /// `QR_CAPTURE_PARKED=1` keeps the parked window capturable (dev screenshots, E2E); read once.
+    private static let captureParked = ProcessInfo.processInfo.environment["QR_CAPTURE_PARKED"] == "1"
 
     private func closedWindowFrame(for screen: NSScreen) -> NSRect {
         let size = state.closedCanvasSize

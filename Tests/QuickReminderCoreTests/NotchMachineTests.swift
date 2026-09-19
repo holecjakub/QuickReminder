@@ -107,11 +107,16 @@ struct NotchMachineTests {
         #expect(m == before)
     }
 
-    @Test func notchTapMidCollapseReopens() {
-        var m = Self.machine(in: .closing)
-        let effects = m.handle(.notchTapped)
-        #expect(m.phase == .open)
-        #expect(effects.contains(.cancelClose))
+    @Test func notchTapOnlyActsOnTheParkedNotch() {
+        for phase in [NotchPhase.closing, .open, .saving, .closed(parked: false)] {
+            var m = Self.machine(in: phase)
+            let before = m
+            #expect(m.handle(.notchTapped).isEmpty, "tap in \(phase) is ignored")
+            #expect(m == before)
+        }
+        var parked = Self.machine(in: .closed(parked: true))
+        #expect(parked.handle(.notchTapped).contains(.animateOpen(fromSaved: false)))
+        #expect(parked.phase == .open)
     }
 
     // MARK: - 4. Full save choreography
@@ -432,7 +437,7 @@ struct NotchMachineTests {
         #expect(alphabetSize == 18)
         #expect(sequences == Self.allPhases.count * perStart)
         // The reachable state space is tiny (5 phases × 4 flags ≤ 80 shapes) and always includes every phase.
-        #expect(shapes.count <= 80)
+        #expect(shapes.count == 17, "a new flag or phase changes the reachable state space — update this on purpose")
         for phase in Self.allPhases {
             #expect(shapes.contains { $0.phase == phase }, "\(phase) reachable")
         }

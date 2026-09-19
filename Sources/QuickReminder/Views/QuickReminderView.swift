@@ -58,7 +58,7 @@ struct QuickReminderView: View {
                 Text(saveErrorText)
                     .font(.system(size: Theme.s(12), weight: .medium))
                     .foregroundStyle(Color(red: 1.0, green: 0.27, blue: 0.23))
-                    .padding(.leading, 31)
+                    .padding(.leading, Theme.s(21) + 10)
                     .padding(.bottom, 8)
                     .transition(.opacity)
             }
@@ -177,7 +177,7 @@ struct QuickReminderView: View {
             .buttonStyle(HoverButtonStyle())
             .accessibilityLabel("Dismiss suggestion")
         }
-        .padding(.leading, 31)
+        .padding(.leading, Theme.s(21) + 10)
     }
 
     private static let suggestionFormatter = SuggestionDateFormatter()
@@ -196,7 +196,7 @@ struct QuickReminderView: View {
             .buttonStyle(.plain)
         }
         .foregroundStyle(Theme.accent)
-        .padding(.leading, 31)
+        .padding(.leading, Theme.s(21) + 10)
     }
 
     private func saveReminder() {

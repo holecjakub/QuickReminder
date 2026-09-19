@@ -117,8 +117,11 @@ struct NotchMachine: Hashable, Sendable {
             return show()
 
         case .notchTapped:
-            // Taps never reopen the saved pill (it ignores the mouse anyway); a tap mid-close reverses.
-            return isVisible ? [] : show()
+            // Only the parked notch takes taps: while open/saving/closing the window either ignores
+            // the mouse or the click belongs to the panel's own controls (mid-close reopen comes
+            // from the hotkey / global monitor paths, not from a tap).
+            guard phase == .closed(parked: true) else { return [] }
+            return show()
 
         case .hide:
             return isVisible ? close(cancellingHold: true) : []

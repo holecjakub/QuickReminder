@@ -22,5 +22,5 @@ enum Theme {
     static let horizontalPadding: CGFloat = 20
 
     /// Scales a design metric by the user's text size (see `NotchLayout.textScale`).
-    @MainActor static func s(_ value: CGFloat) -> CGFloat { (value * NotchLayout.textScale).rounded(.toNearestOrEven) }
+    @MainActor static func s(_ value: CGFloat) -> CGFloat { (value * NotchLayout.cachedTextScale).rounded(.toNearestOrEven) }
 }
