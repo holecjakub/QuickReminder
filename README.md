@@ -1,8 +1,14 @@
 # QuickReminder
 
-A macOS 26 menu bar app that recreates the **iOS 26 “Quick Reminder” overlay** 1:1 — and, because we are on a Mac, the panel animates **out of the MacBook notch** (boring.notch / NotchNook style): the black notch grows into a wide panel, you type, hit `⌘↩`, and it collapses back.
+A macOS 26 menu bar app that recreates the **iOS 26 “Quick Reminder” overlay** 1:1 — and, because we are on a Mac, the panel animates **out of the MacBook notch** (boring.notch / NotchNook style): the black notch grows into a wide panel, you type, hit `⌘↩`, the checkmark flies into the notch, and it collapses back.
+
+> Not affiliated with, endorsed by or sponsored by Apple Inc. Apple, macOS, iOS, Xcode, SF Symbols and Reminders are trademarks of Apple Inc. QuickReminder is an independent, from-scratch implementation using only public Apple frameworks; it contains no Apple source code or assets and uses no private APIs. It reads and writes your reminders through the public EventKit framework.
 
 Design reference: the iOS 26 quick-reminder overlay, measured metrics in `SPEC.md` §4 · Notch research: `reference/notch-research.md`
+
+## Install
+
+Download `QuickReminder-x.y.z.dmg` (or the `.zip`) from the [latest release](https://github.com/holecjakub/QuickReminder/releases/latest), drag the app to Applications and launch it. Builds are signed with a Developer ID and notarized by Apple, so Gatekeeper opens them without warnings. On first launch macOS asks for Reminders access.
 
 ## Build
 
@@ -45,3 +51,14 @@ Scripts/shot.sh --full desktop  # whole built-in display (QR_SHOT_DIR overrides 
 ## Requirements
 
 macOS 26 Tahoe, Apple silicon. Works on displays without a notch too (a virtual notch pill is drawn at the top-centre of the screen).
+
+## Release
+
+Releases are tagged `vX.Y.Z` and published on GitHub with a notarized `.dmg` and `.zip`.
+
+- **From this Mac:** `Scripts/release.sh 1.0.0` builds Release, signs with the Developer ID certificate in the keychain (timestamped, hardened runtime), packages, notarizes and staples both artifacts, tags, and creates the GitHub release with notes from `CHANGELOG.md`. `--dry-run` stops before tagging; `--pre` marks a pre-release. Notarization credentials come from `~/.config/quickreminder/notary.env` (written by `Scripts/setup-release-secrets.sh`).
+- **From GitHub Actions:** pushing a `v*` tag runs `.github/workflows/release.yml`, which does the same on a `macos-26` runner using the repository secrets set by `Scripts/setup-release-secrets.sh`. `ci.yml` builds and runs the checks on every PR.
+
+## License
+
+MIT — see `LICENSE`.
