@@ -19,6 +19,7 @@ struct InputView: View {
                     placeholder: "New Reminder",
                     text: $title,
                     font: .system(size: Theme.s(19), weight: .regular),
+                    pointSize: Theme.s(19),
                     placeholderColor: Theme.placeholder,
                     onSubmit: onSubmit
                 )
@@ -29,6 +30,7 @@ struct InputView: View {
                     placeholder: "Notes",
                     text: $notes,
                     font: .system(size: Theme.s(15), weight: .regular),
+                    pointSize: Theme.s(15),
                     placeholderColor: Theme.placeholderSecondary,
                     onSubmit: onSubmit
                 )
@@ -39,22 +41,26 @@ struct InputView: View {
 }
 
 /// Plain text field with a custom-coloured placeholder (SwiftUI's default placeholder tint is not controllable).
+/// Known macOS SwiftUI behaviour: a `TextField`'s height changes between "empty" and "has
+/// text" (and when a placeholder view leaves the hierarchy), which nudged everything below
+/// the Notes line by a point. The row therefore has a fixed height derived from the font,
+/// and the placeholder stays in the layout (only its opacity changes).
 struct PlaceholderTextField: View {
     let placeholder: String
     @Binding var text: String
     let font: Font
+    let pointSize: CGFloat
     let placeholderColor: Color
     let onSubmit: () -> Void
     @Environment(\.listAccent) private var accent
 
     var body: some View {
         ZStack(alignment: .leading) {
-            if text.isEmpty {
-                Text(placeholder)
-                    .font(font)
-                    .foregroundStyle(placeholderColor)
-                    .allowsHitTesting(false)
-            }
+            Text(placeholder)
+                .font(font)
+                .foregroundStyle(placeholderColor)
+                .opacity(text.isEmpty ? 1 : 0)
+                .allowsHitTesting(false)
             TextField("", text: $text)
                 .font(font)
                 .foregroundStyle(.white)
@@ -63,5 +69,13 @@ struct PlaceholderTextField: View {
                 .onSubmit(onSubmit)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: Self.lineHeight(for: pointSize))
+        .clipped()
+    }
+
+    /// Line height of the system font at `pointSize` (ascender + |descender| + leading), rounded up.
+    static func lineHeight(for pointSize: CGFloat) -> CGFloat {
+        let f = NSFont.systemFont(ofSize: pointSize)
+        return (f.ascender - f.descender + f.leading).rounded(.up)
     }
 }
