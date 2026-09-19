@@ -1,5 +1,6 @@
 import SwiftUI
 
+/// Bottom row: outlined pill with date / location / flag on the left, round ✓ save button on the right.
 struct BottomBar: View {
     @Binding var dueDate: Date?
     @Binding var flagged: Bool
@@ -7,33 +8,46 @@ struct BottomBar: View {
     let canSave: Bool
     let onSave: () -> Void
 
-    @State private var showLocationField = false
-    @State private var showCustomDatePicker = false
-    @State private var saveScale: CGFloat = 1.0
+    @Binding var showLocationField: Bool
+    @Binding var showCustomDatePicker: Bool
+    let saveNamespace: Namespace.ID
+    let saveButtonYielded: Bool
+
+    private let iconSize: CGFloat = 22
+    private let hitSize: CGFloat = 38
 
     var body: some View {
         HStack(alignment: .center, spacing: 0) {
             pillView
-            Spacer()
+            Spacer(minLength: 16)
             saveButton
         }
     }
 
+    // MARK: Pill
+
     private var pillView: some View {
-        HStack(spacing: 26) {
+        HStack(spacing: 17) {
             dateMenu
             locationButton
             flagButton
         }
-        .padding(.horizontal, 18)
-        .frame(height: 48)
+        .padding(.horizontal, 11)
+        .frame(height: 44)
         .background(
             Capsule()
-                .fill(Color.white.opacity(0.10))
-                .overlay(
-                    Capsule().strokeBorder(Color.white.opacity(0.07), lineWidth: 1)
-                )
+                .fill(Theme.pillFill)
+                .overlay(Capsule().strokeBorder(Theme.pillStroke, lineWidth: 1))
         )
+    }
+
+    private func icon(_ name: String, active: Bool, activeColor: Color = Theme.accent, size: CGFloat? = nil) -> some View {
+        Image(systemName: name)
+            .font(.system(size: size ?? iconSize, weight: .regular))
+            .symbolRenderingMode(.monochrome)
+            .foregroundStyle(active ? activeColor : .white)
+            .frame(width: hitSize, height: hitSize)
+            .contentShape(Rectangle())
     }
 
     private var dateMenu: some View {
@@ -59,69 +73,68 @@ struct BottomBar: View {
                 Label("Remind Me Later…", systemImage: "calendar")
             }
         } label: {
-            Image(systemName: "calendar.badge.clock")
-                .resizable()
-                .scaledToFit()
-                .fontWeight(.regular)
-                .foregroundStyle(dueDate != nil ? Color.accentColor : .white)
-                .frame(width: 22, height: 22)
-                .frame(width: 32, height: 32)
-                .contentShape(Rectangle())
+            icon("calendar.badge.clock", active: dueDate != nil, size: iconSize + 2)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        .hoverScale()
         .accessibilityLabel("Add date")
-        .popover(isPresented: $showCustomDatePicker, arrowEdge: .top) {
+        .popover(isPresented: $showCustomDatePicker, arrowEdge: .bottom) {
             DatePickerPopover(selectedDate: $dueDate, isPresented: $showCustomDatePicker)
         }
     }
 
     private var locationButton: some View {
         Button { showLocationField = true } label: {
-            Image(systemName: "paperplane.fill")
-                .resizable()
-                .scaledToFit()
-                .foregroundStyle(!locationText.isEmpty ? Color.accentColor : .white)
-                .frame(width: 22, height: 22)
-                .frame(width: 32, height: 32)
+            icon(locationText.isEmpty ? "location" : "location.fill", active: !locationText.isEmpty)
+                .contentTransition(.symbolEffect(.replace))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HoverButtonStyle())
         .accessibilityLabel("Add location")
-        .popover(isPresented: $showLocationField, arrowEdge: .top) {
+        .popover(isPresented: $showLocationField, arrowEdge: .bottom) {
             locationPopover
         }
     }
 
     private var flagButton: some View {
-        Button { flagged.toggle() } label: {
-            Image(systemName: flagged ? "flag.fill" : "flag")
-                .resizable()
-                .scaledToFit()
-                .foregroundStyle(flagged ? .orange : .white)
-                .frame(width: 22, height: 22)
-                .frame(width: 32, height: 32)
+        Button {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) { flagged.toggle() }
+        } label: {
+            icon(flagged ? "flag.fill" : "flag", active: flagged, activeColor: Theme.flagOrange)
+                .contentTransition(.symbolEffect(.replace))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HoverButtonStyle())
         .accessibilityLabel("Toggle flag")
     }
 
+    // MARK: Save
+
     private var saveButton: some View {
-        Button(action: handleSave) {
-            ZStack {
-                Circle()
-                    .fill(canSave ? Color.accentColor : Color.white.opacity(0.14))
-                    .frame(width: 52, height: 52)
-                Image(systemName: "checkmark")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(.white)
+        Group {
+            if saveButtonYielded {
+                // The badge in NotchContainerView owns the geometry now; keep the slot.
+                Color.clear.frame(width: 48, height: 48)
+            } else {
+                Button(action: handleSave) {
+                    ZStack {
+                        Circle()
+                            .fill(canSave ? Theme.accent : Theme.grayCircleDisabled)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                    .frame(width: 48, height: 48)
+                    .contentShape(Circle())
+                }
+                .buttonStyle(HoverButtonStyle())
+                .matchedGeometryEffect(id: "save", in: saveNamespace)
+                .disabled(!canSave)
+                .animation(.easeInOut(duration: 0.18), value: canSave)
+                .accessibilityLabel("Save reminder")
+                .keyboardShortcut(.return, modifiers: .command)
             }
         }
-        .buttonStyle(.plain)
-        .scaleEffect(saveScale)
-        .disabled(!canSave)
-        .animation(.easeInOut(duration: 0.15), value: canSave)
-        .accessibilityLabel("Save reminder")
     }
 
     private var locationPopover: some View {
@@ -130,6 +143,7 @@ struct BottomBar: View {
             TextField("Enter location", text: $locationText)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 220)
+                .onSubmit { showLocationField = false }
             HStack {
                 Spacer()
                 Button("Done") { showLocationField = false }
@@ -140,17 +154,8 @@ struct BottomBar: View {
     }
 
     private func handleSave() {
-        withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
-            saveScale = 1.15
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
-                saveScale = 1.0
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            onSave()
-        }
+        guard canSave else { return }
+        onSave()
     }
 
     private func tomorrowAt9AM() -> Date {

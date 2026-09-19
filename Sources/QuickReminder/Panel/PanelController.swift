@@ -1,127 +1,325 @@
 import AppKit
 import SwiftUI
 
+/// Owns the notch window and drives the expand / collapse choreography.
+/// Public API (`show`, `hide`, `toggle`) is what the hotkey, menu bar and URL scheme call.
 @MainActor
 final class PanelController {
     static let shared = PanelController()
 
-    private let panel: QuickReminderPanel
-    private var clickMonitor: Any?
+    let state = NotchState()
+
+    private var window: NotchWindow?
+    private var hostingView: NSHostingView<AnyView>?
+    private var globalClickMonitor: Any?
+    private var localEventMonitor: Any?
+    private var openGeneration = UUID()
+    private var closeTask: Task<Void, Never>?
     private var isVisible = false
 
     private init() {
-        panel = QuickReminderPanel()
-        setupContentView()
-    }
-
-    private func setupContentView() {
-        let rootView = QuickReminderView().environment(\.colorScheme, .dark)
-        let hostingView = NSHostingView(rootView: rootView)
-        hostingView.wantsLayer = true
-        hostingView.layer?.backgroundColor = NSColor.clear.cgColor
-
-        let container = NSView()
-        container.wantsLayer = true
-        container.layer?.cornerRadius = Self.cornerRadius
-        container.layer?.masksToBounds = true
-
-        if #available(macOS 26.0, *) {
-            let glass = NSGlassEffectView()
-            glass.cornerRadius = Self.cornerRadius
-            glass.contentView = hostingView
-            container.addSubview(glass)
-            glass.translatesAutoresizingMaskIntoConstraints = false
-            NSLayoutConstraint.activate([
-                glass.topAnchor.constraint(equalTo: container.topAnchor),
-                glass.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-                glass.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-                glass.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            ])
-        } else {
-            let effectView = NSVisualEffectView()
-            effectView.material = .hudWindow
-            effectView.state = .active
-            effectView.wantsLayer = true
-            effectView.layer?.cornerRadius = Self.cornerRadius
-            effectView.layer?.masksToBounds = true
-            container.addSubview(effectView)
-            effectView.translatesAutoresizingMaskIntoConstraints = false
-            NSLayoutConstraint.activate([
-                effectView.topAnchor.constraint(equalTo: container.topAnchor),
-                effectView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-                effectView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-                effectView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            ])
-            container.addSubview(hostingView)
-            hostingView.translatesAutoresizingMaskIntoConstraints = false
-            NSLayoutConstraint.activate([
-                hostingView.topAnchor.constraint(equalTo: container.topAnchor),
-                hostingView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-                hostingView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-                hostingView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            ])
+        installGlobalClickMonitor()
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.relayout() }
         }
-
-        panel.contentView = container
     }
 
-    private static let cornerRadius: CGFloat = 28
+    // MARK: - Public
 
     func toggle() {
-        if isVisible { hide() } else { show() }
+        if isVisible && !state.isSaving { hide() } else { show() }
     }
 
     func show() {
-        guard !isVisible else { return }
-        centerOnMouseScreen()
-        panel.makeKeyAndOrderFront(nil)
-        isVisible = true
-        NotificationCenter.default.post(name: .panelWillShow, object: nil)
-        installClickMonitor()
-    }
-
-    func hide() {
-        guard isVisible else { return }
-        removeClickMonitor()
-        isVisible = false
-        NotificationCenter.default.post(name: .panelDidHide, object: nil)
-
-        let capturedPanel = panel
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 130_000_000)
-            capturedPanel.orderOut(nil)
+        // Re-opening during the "saved" hold counts as a reopen from the pill.
+        let reopeningFromSaved = isVisible && state.isSaving
+        guard !isVisible || reopeningFromSaved else { return }
+        // Re-opening while the collapse animation is still running: don't snap
+        // back to the notch, just reverse from wherever the shape currently is.
+        let wasClosing = closeTask != nil || reopeningFromSaved
+        closeTask?.cancel()
+        closeTask = nil
+        saveTask?.cancel()
+        saveTask = nil
+        // The badge (if any) is invisible or about to be; drop it and give the ✓ button its
+        // geometry back without animating either.
+        var noAnimation = Transaction()
+        noAnimation.disablesAnimations = true
+        withTransaction(noAnimation) {
+            state.savedBadgeShown = false
         }
-    }
 
-    private func centerOnMouseScreen() {
-        let screen = screenWithMouse()
-        let frame = screen.visibleFrame
-        let panelSize = panel.frame.size
-        let x = frame.midX - panelSize.width / 2
-        let y = frame.midY + frame.height * 0.10
-        panel.setFrameOrigin(NSPoint(x: x, y: y))
-    }
+        guard let screen = targetScreen() else { return }
+        configureGeometry(for: screen)
+        let window = ensureWindow(on: screen)
+        if !wasClosing {
+            window.setFrame(windowFrame(for: screen), display: false)
+            // Start collapsed so the first frame is indistinguishable from the bezel
+            // (only publish what actually changes).
+            if state.isOpen { state.isOpen = false }
+            if state.contentVisible { state.contentVisible = false }
+        }
+        window.ignoresMouseEvents = false
+        window.makeKeyAndOrderFront(nil)
+        isVisible = true
+        installLocalEventMonitor()
+        NotificationCenter.default.post(name: .panelWillShow, object: nil)
 
-    private func screenWithMouse() -> NSScreen {
-        let loc = NSEvent.mouseLocation
-        return NSScreen.screens.first { NSMouseInRect(loc, $0.frame, false) }
-            ?? NSScreen.main
-            ?? NSScreen.screens[0]
-    }
-
-    private func installClickMonitor() {
-        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            Task { @MainActor in
-                self?.hide()
+        // Next run-loop turn: expand.
+        DispatchQueue.main.async { [state] in
+            withAnimation(NotchLayout.effectiveOpen) {
+                state.isSaving = false   // reopen from the saved pill: spring from its current width
+                state.isOpen = true
+            }
+            withAnimation(NotchLayout.effectiveContentIn) { state.contentVisible = true }
+        }
+        let openGeneration = UUID()
+        self.openGeneration = openGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self, self.isVisible, self.openGeneration == openGeneration else { return }
+            self.state.isSettled = true
+        }
+        // SwiftUI's @FocusState can lose the race against the window becoming key,
+        // so re-assert keyboard focus on the title field once the content is in.
+        for delay in [0.12, 0.30] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.focusTitleFieldIfNeeded()
             }
         }
     }
 
-    private func removeClickMonitor() {
-        if let monitor = clickMonitor {
-            NSEvent.removeMonitor(monitor)
-            clickMonitor = nil
+    /// Makes the first editable text field in the hosting view the first responder
+    /// unless the user is already editing something.
+    private func focusTitleFieldIfNeeded() {
+        guard isVisible, !state.isSaving, let window, let hostingView else { return }
+        if window.firstResponder is NSTextView { return }
+        window.makeKey()
+        if let field = Self.firstTextField(in: hostingView) {
+            window.makeFirstResponder(field)
         }
+    }
+
+    private static func firstTextField(in view: NSView) -> NSTextField? {
+        for sub in view.subviews {
+            if let field = sub as? NSTextField, field.isEditable { return field }
+            if let found = firstTextField(in: sub) { return found }
+        }
+        return nil
+    }
+
+    func hide() {
+        guard isVisible, let window else { return }
+        isVisible = false
+        saveTask?.cancel()
+        saveTask = nil
+        NotificationCenter.default.post(name: .panelDidHide, object: nil)
+
+        removeLocalEventMonitor()
+        window.ignoresMouseEvents = true   // the collapse needs no input; clicks reach what is below
+        state.isSettled = false
+        if state.contentVisible {
+            withAnimation(NotchLayout.effectiveContentOut) { state.contentVisible = false }
+        }
+        withAnimation(NotchLayout.effectiveClose) {
+            if state.isOpen { state.isOpen = false }
+            if state.isSaving { state.isSaving = false }
+        }
+
+        closeTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(NotchLayout.closeDuration))
+            guard !Task.isCancelled, let self, !self.isVisible else { return }
+            window.ignoresMouseEvents = true
+            window.orderOut(nil)
+            var noAnimation = Transaction()
+            noAnimation.disablesAnimations = true
+            withTransaction(noAnimation) { self.state.savedBadgeShown = false }
+            self.closeTask = nil
+        }
+    }
+
+    /// Reminders-style "saved" choreography: the panel collapses to notch height but stays
+    /// wider at the sides, the ✓ flies into the right-hand extension and draws itself in,
+    /// then the notch returns to its normal size.
+    func collapseAfterSave() {
+        guard isVisible, !state.isSaving, let window else { return }
+        if NotchLayout.reduceMotion {
+            hide()
+            return
+        }
+        // Flip the guards first so nothing that ending editing might trigger can save again,
+        // then take input away: no clicks, no field editor, and the settle timer from show()
+        // must not drop the mask mid-choreography. The local key monitor stays installed and
+        // swallows keystrokes silently (no beeps) while the panel is still the key window.
+        openGeneration = UUID()
+        state.isSettled = false
+        withAnimation(NotchLayout.contentOutAnimation) { state.contentVisible = false }
+        withAnimation(NotchLayout.savingAnimation) {
+            state.isOpen = false
+            state.isSaving = true
+            state.savedBadgeShown = true   // same transaction as the button's removal → the ✓ flies
+        }
+        window.ignoresMouseEvents = true
+        window.makeFirstResponder(nil)
+        saveTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(NotchLayout.savedHold))
+            guard !Task.isCancelled, let self, self.isVisible else { return }
+            self.saveTask = nil
+            self.hide()
+        }
+    }
+
+    private var saveTask: Task<Void, Never>?
+
+    // MARK: - Window & geometry
+
+    private func ensureWindow(on screen: NSScreen) -> NotchWindow {
+        if let window { return window }
+        let window = NotchWindow(frame: windowFrame(for: screen))
+        let root = AnyView(
+            NotchContainerView()
+                .environmentObject(state)
+                .environment(\.colorScheme, .dark)
+        )
+        let hosting = NSHostingView(rootView: root)
+        hosting.wantsLayer = true
+        hosting.layer?.backgroundColor = NSColor.clear.cgColor
+        window.contentView = hosting
+        self.hostingView = hosting
+        self.window = window
+        return window
+    }
+
+    /// Prefer the built-in display with a notch; otherwise the screen under the mouse.
+    /// nil while displays are being reconfigured (the screen list can be transiently empty).
+    private func targetScreen() -> NSScreen? {
+        if let notched = NSScreen.screens.first(where: { NotchGeometry.notchRect(for: $0) != nil }) {
+            return notched
+        }
+        let loc = NSEvent.mouseLocation
+        return NSScreen.screens.first { NSMouseInRect(loc, $0.frame, false) }
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
+    }
+
+    private func configureGeometry(for screen: NSScreen) {
+        setClosedSize(NotchGeometry.closedShapeSize(for: screen, topCornerRadius: NotchLayout.closedTopRadius))
+        if state.openSize != NotchLayout.openSize { state.openSize = NotchLayout.openSize }
+    }
+
+    /// Publishing unchanged values would re-render the whole panel for nothing.
+    private func setClosedSize(_ size: CGSize) {
+        if state.closedSize != size { state.closedSize = size }
+    }
+
+    /// Window covers the fully-open panel, anchored to the top edge, centred on the notch.
+    private func windowFrame(for screen: NSScreen) -> NSRect {
+        let size = NotchLayout.canvasSize
+        let centerX: CGFloat
+        if let notch = NotchGeometry.notchRect(for: screen) {
+            centerX = notch.midX
+        } else {
+            centerX = screen.frame.midX
+        }
+        return NSRect(
+            x: centerX - size.width / 2,
+            y: screen.frame.maxY - size.height,
+            width: size.width,
+            height: size.height
+        )
+    }
+
+    private func relayout() {
+        guard let window, let screen = targetScreen() else { return }
+        configureGeometry(for: screen)
+        window.setFrame(windowFrame(for: screen), display: true)
+    }
+
+    // MARK: - Global mouse handling
+
+    /// One global monitor for the app's lifetime:
+    /// - panel open  → any click outside our window collapses it
+    /// - panel closed → a click on the physical notch expands it
+    private func installGlobalClickMonitor() {
+        globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            // AppKit delivers monitor blocks on the main thread in practice, but the API does not
+            // promise it, so verify before assuming isolation.
+            let type = event.type
+            let handle: @MainActor () -> Void = {
+                guard let self else { return }
+                if self.isVisible {
+                    self.hide()
+                } else if type == .leftMouseDown, self.isOnNotch(NSEvent.mouseLocation) {
+                    self.show()
+                }
+            }
+            if Thread.isMainThread {
+                MainActor.assumeIsolated { handle() }
+            } else {
+                DispatchQueue.main.async { handle() }
+            }
+        }
+    }
+
+    /// While open: Esc always collapses (even when a text field owns the key loop),
+    /// and a click inside the window but outside the black silhouette collapses too
+    /// (the global monitor never sees our own window's events).
+    private func installLocalEventMonitor() {
+        guard localEventMonitor == nil else { return }
+        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self, self.isVisible, event.window === self.window else { return event }
+            if event.type == .keyDown {
+                if event.keyCode == 53 { // Esc
+                    self.hide()
+                    return nil
+                }
+                // During the saved hold the panel is still key but has no field: swallow quietly.
+                if self.state.isSaving { return nil }
+                return event
+            }
+            if let hosting = self.hostingView {
+                let point = hosting.convert(event.locationInWindow, from: nil)
+                if !self.silhouetteContains(point, in: hosting.bounds) {
+                    self.hide()
+                    return nil
+                }
+            }
+            return event
+        }
+    }
+
+    private func removeLocalEventMonitor() {
+        if let localEventMonitor {
+            NSEvent.removeMonitor(localEventMonitor)
+            self.localEventMonitor = nil
+        }
+    }
+
+    /// Hit-test against the open silhouette (top-anchored, centred) in the hosting view's flipped-or-not coords.
+    /// Hit-test against the silhouette as currently drawn (top-anchored, centred in the canvas).
+    private func silhouetteContains(_ point: CGPoint, in bounds: CGRect) -> Bool {
+        guard let hostingView else { return false }
+        // Convert to top-down canvas coordinates regardless of the hosting view's flippedness.
+        let topDown = CGPoint(x: point.x, y: hostingView.isFlipped ? point.y : bounds.maxY - point.y)
+        return NotchShape.contains(
+            topDown,
+            canvasWidth: bounds.width,
+            shapeSize: state.currentSize,
+            topCornerRadius: state.isOpen ? NotchLayout.openTopRadius : NotchLayout.closedTopRadius,
+            bottomCornerRadius: state.isOpen ? NotchLayout.openBottomRadius : NotchLayout.closedBottomRadius
+        )
+    }
+
+    private func isOnNotch(_ point: NSPoint) -> Bool {
+        for screen in NSScreen.screens {
+            if let notch = NotchGeometry.notchRect(for: screen), notch.insetBy(dx: -8, dy: 0).contains(point) {
+                return true
+            }
+        }
+        return false
     }
 }
 
