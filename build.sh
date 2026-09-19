@@ -105,7 +105,7 @@ echo "Assembling app bundle..."
 # CFBundleVersion auto-increments via a build timestamp so each build is
 # distinguishable, while CFBundleShortVersionString stays as authored.
 BUILD_VERSION="$(date +%Y%m%d%H%M%S)"
-SHORT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist 2>/dev/null || echo '1.0')"
+SHORT_VERSION="${VERSION:-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist 2>/dev/null || echo '1.0')}"
 
 # Resources/Info.plist is authored/maintained by xcodegen (project.yml) and
 # still contains xcodebuild-style $(VAR) placeholders for a few keys. Render
@@ -141,7 +141,13 @@ SIGN_LOG="$(mktemp -t quickreminder-codesign)"
 trap 'rm -f "$SIGN_LOG"' EXIT
 # Intentionally unsandboxed (see project.yml) — hardened runtime only. Never ship a
 # bundle whose signature or runtime flag did not stick.
-if ! codesign --force --sign "$SIGN_ID" --options runtime "$APP_BUNDLE" 2>"$SIGN_LOG"; then
+# Developer ID builds get a secure timestamp (required for notarization); ad-hoc/dev builds don't need one.
+SIGN_FLAGS=(--force --sign "$SIGN_ID" --options runtime)
+SIGN_NAME="$(security find-identity -v -p codesigning 2>/dev/null | grep -F "$SIGN_ID" | head -1 || true)"
+if [[ "$SIGN_NAME" == *"Developer ID Application"* || "${CODESIGN_TIMESTAMP:-0}" == "1" ]]; then
+    SIGN_FLAGS+=(--timestamp)
+fi
+if ! codesign "${SIGN_FLAGS[@]}" "$APP_BUNDLE" 2>"$SIGN_LOG"; then
     echo "error: codesign failed:" >&2
     cat "$SIGN_LOG" >&2
     exit 1

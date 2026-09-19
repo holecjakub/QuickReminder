@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & test (macOS 26)
+    runs-on: macos-26
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Unit checks (Scripts/test.sh)
+        run: Scripts/test.sh
+
+      - name: Build app (ad-hoc signed)
+        env:
+          SIGN_ID: "-"
+        run: ./build.sh
+
+      - name: Inspect bundle
+        run: |
+          codesign -dv --verbose=2 build/QuickReminder.app 2>&1 | grep -E "Identifier|flags|TeamIdentifier" || true
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' build/QuickReminder.app/Contents/Info.plist
+          ls -la build/QuickReminder.app/Contents/MacOS build/QuickReminder.app/Contents/Resources
+
+      - name: Upload unsigned build
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuickReminder-unsigned-${{ github.sha }}
+          path: build/QuickReminder.app
+          retention-days: 14
