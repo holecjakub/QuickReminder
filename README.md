@@ -22,7 +22,8 @@ Download `QuickReminder-x.y.z.dmg` (or the `.zip`) from the [latest release](htt
 The app is signed with your “Apple Development” identity when one is in the keychain (so the Reminders permission survives rebuilds), otherwise ad-hoc — always with hardened runtime, intentionally **not** sandboxed (sandboxing breaks the EventKit connection on macOS 26.6, see `SPEC.md` §5). `xcodegen generate` keeps `QuickReminder.xcodeproj` in sync for when you want to open it in Xcode.
 
 ```bash
-Scripts/test.sh   # geometry / shortcut unit checks, no Xcode project needed
+swift test         # Swift Testing suite (Tests/QuickReminderCoreTests)
+Scripts/test.sh    # same, with a one-line pass/fail summary; passes extra args through, e.g. --filter
 ```
 
 ## Use
@@ -30,6 +31,7 @@ Scripts/test.sh   # geometry / shortcut unit checks, no Xcode project needed
 | Action | Result |
 |--------|--------|
 | Hover the notch | It swells slightly with a spring and the trackpad taps |
+| Larger system text | Fonts, controls and the panel scale with Accessibility → Display → Text size |
 | `⇧⌘R` (configurable) or click the notch | Panel expands out of the notch and takes the keyboard; the frontmost app stays active (no app switch) |
 | Type a date in the title (“buy milk tomorrow at 2pm”, “zavolat mámě zítra ve 14:00”) | A blue suggestion chip appears; `Tab` or click applies it and strips the phrase from the title; on save it is applied automatically. English and Czech. |
 | Type, `⌘↩` / `↩` / click ✓ | Saves to Apple Reminders; the panel shrinks to a wide notch pill, the ✓ flies in and ticks, then the notch returns to normal |

@@ -32,8 +32,8 @@ struct BottomBar: View {
             locationButton
             flagButton
         }
-        .padding(.horizontal, 11)
-        .frame(height: 44)
+        .padding(.horizontal, Theme.s(11))
+        .frame(height: Theme.s(44))
         .background(
             Capsule()
                 .fill(Theme.pillFill)
@@ -41,13 +41,43 @@ struct BottomBar: View {
         )
     }
 
-    private func icon(_ name: String, active: Bool, activeColor: Color = Theme.accent, size: CGFloat? = nil) -> some View {
-        Image(systemName: name)
-            .font(.system(size: size ?? iconSize, weight: .regular))
-            .symbolRenderingMode(.monochrome)
-            .foregroundStyle(active ? activeColor : .white)
-            .frame(width: hitSize, height: hitSize)
-            .contentShape(Rectangle())
+    /// Pill glyphs are rendered through AppKit's symbol configuration rather than SwiftUI's
+    /// `Image(systemName:)`: at one point size AppKit draws the three symbols optically balanced
+    /// (measured at 22 pt: calendar.badge.clock 25.5 × 21.5, location 21 × 20, flag 20.5 × 20.5),
+    /// whereas the SwiftUI symbol image draws the badge symbol markedly smaller. Template images
+    /// take the foreground style, so active colours keep working.
+    /// Only the badge symbol needs the AppKit path; `flag` / `location` stay SwiftUI symbols so
+    /// `.contentTransition(.symbolEffect(.replace))` keeps animating their fill toggle.
+    @ViewBuilder
+    private func icon(_ name: String, active: Bool, activeColor: Color = Theme.accent) -> some View {
+        Group {
+            if name.contains(".badge.") {
+                Image(nsImage: Self.symbolImage(name, pointSize: Theme.s(iconSize)))
+                    .renderingMode(.template)
+            } else {
+                Image(systemName: name)
+                    .font(.system(size: Theme.s(iconSize), weight: .regular))
+                    .symbolRenderingMode(.monochrome)
+            }
+        }
+        .foregroundStyle(active ? activeColor : .white)
+        .frame(width: Theme.s(hitSize), height: Theme.s(hitSize))
+        .contentShape(Rectangle())
+    }
+
+    /// Cached per name + size: a fresh NSImage per body would re-rasterise on every render
+    /// (~160 µs each), and a stable object lets `Image(nsImage:)` skip the redraw entirely.
+    @MainActor private static var symbolCache: [String: NSImage] = [:]
+
+    @MainActor private static func symbolImage(_ name: String, pointSize: CGFloat) -> NSImage {
+        let key = "\(name)@\(pointSize)"
+        if let cached = symbolCache[key] { return cached }
+        let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config) ?? NSImage()
+        image.isTemplate = true
+        symbolCache[key] = image
+        return image
     }
 
     private var dateMenu: some View {
@@ -73,7 +103,7 @@ struct BottomBar: View {
                 Label("Remind Me Later…", systemImage: "calendar")
             }
         } label: {
-            icon("calendar.badge.clock", active: dueDate != nil, size: iconSize + 2)
+            icon("calendar.badge.clock", active: dueDate != nil)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -114,17 +144,17 @@ struct BottomBar: View {
         Group {
             if saveButtonYielded {
                 // The badge in NotchContainerView owns the geometry now; keep the slot.
-                Color.clear.frame(width: 48, height: 48)
+                Color.clear.frame(width: Theme.s(48), height: Theme.s(48))
             } else {
                 Button(action: handleSave) {
                     ZStack {
                         Circle()
                             .fill(canSave ? Theme.accent : Theme.grayCircleDisabled)
                         Image(systemName: "checkmark")
-                            .font(.system(size: 22, weight: .semibold))
+                            .font(.system(size: Theme.s(22), weight: .semibold))
                             .foregroundStyle(.white)
                     }
-                    .frame(width: 48, height: 48)
+                    .frame(width: Theme.s(48), height: Theme.s(48))
                     .contentShape(Circle())
                 }
                 .buttonStyle(HoverButtonStyle())

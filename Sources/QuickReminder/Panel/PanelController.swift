@@ -3,31 +3,35 @@ import SwiftUI
 
 /// Owns the notch window and drives the expand / collapse choreography.
 /// Public API (`show`, `hide`, `toggle`) is what the hotkey, menu bar and URL scheme call.
+///
+/// Every decision lives in `NotchMachine` (a pure reducer, see `NotchMachine.swift`); this
+/// class feeds it events and performs the effects it returns against AppKit / SwiftUI.
 @MainActor
 final class PanelController {
     static let shared = PanelController()
 
     let state = NotchState()
 
+    private var machine = NotchMachine()
+    /// Events that arrive while effects are being performed run after the current batch,
+    /// so the machine never sees an event in the middle of its own effect list.
+    private var pendingEvents: [(event: NotchEvent, screen: NSScreen?)] = []
+    private var isDispatching = false
+
     private var window: NotchWindow?
     private var hostingView: NSHostingView<AnyView>?
     private var globalClickMonitor: Any?
-    /// Re-armed once the pointer has left the notch; prevents an immediate re-hover after closing.
-    private var hoverArmed = true
+    private var localEventMonitor: Any?
     /// Pending hover dwell (the swell + haptic fire only after the pointer stays ~90 ms).
     private var hoverDwell: DispatchWorkItem?
-    /// True while the window is parked (ordered in, closed) over a physical notch.
-    private var isParked = false
+    private var closeTask: Task<Void, Never>?
+    private var saveTask: Task<Void, Never>?
 
     /// The window stays ordered in over a physical notch while closed; displays without one
     /// keep the order-out behaviour so no black pill is painted on an external monitor.
     private func shouldStayParked(on screen: NSScreen) -> Bool {
         NotchGeometry.notchRect(for: screen) != nil
     }
-    private var localEventMonitor: Any?
-    private var openGeneration = UUID()
-    private var closeTask: Task<Void, Never>?
-    private var isVisible = false
 
     private init() {
         installGlobalClickMonitor()
@@ -35,8 +39,7 @@ final class PanelController {
         // its closed silhouette is indistinguishable from the bezel and gives us hover + click
         // without any system-wide mouse polling.
         if let screen = targetScreen(), shouldStayParked(on: screen) {
-            configureGeometry(for: screen)
-            parkClosed(on: screen)
+            dispatch(.screenChanged(hasNotch: true), on: screen)
         }
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
@@ -50,77 +53,231 @@ final class PanelController {
     // MARK: - Public
 
     func toggle() {
-        if isVisible && !state.isSaving { hide() } else { show() }
+        if machine.phase == .open { hide() } else { show() }
     }
 
     func show() {
-        // Re-opening during the "saved" hold counts as a reopen from the pill.
-        let reopeningFromSaved = isVisible && state.isSaving
-        guard !isVisible || reopeningFromSaved else { return }
+        // nil while displays are being reconfigured; nothing to show on then.
         guard let screen = targetScreen() else { return }
-        cancelHoverDwell()
-        isParked = false
-        // Re-opening while the collapse animation is still running: don't snap
-        // back to the notch, just reverse from wherever the shape currently is.
-        let wasClosing = closeTask != nil || reopeningFromSaved
-        closeTask?.cancel()
-        closeTask = nil
-        saveTask?.cancel()
-        saveTask = nil
-        // The badge (if any) is invisible or about to be; drop it and give the ✓ button its
-        // geometry back without animating either.
-        var noAnimation = Transaction()
-        noAnimation.disablesAnimations = true
-        withTransaction(noAnimation) {
-            state.savedBadgeShown = false
-        }
+        dispatch(.show, on: screen)
+    }
 
-        configureGeometry(for: screen)
-        let window = ensureWindow(on: screen)
-        window.sharingType = .readOnly   // the open panel may appear in screenshots / sharing
-        if !wasClosing {
+    func hide() {
+        dispatch(.hide, on: nil)
+    }
+
+    /// Reminders-style "saved" choreography: the panel collapses to notch height but stays
+    /// wider at the sides, the ✓ flies into the right-hand extension and draws itself in,
+    /// then the notch returns to its normal size.
+    func collapseAfterSave() {
+        dispatch(.save(reduceMotion: NotchLayout.reduceMotion), on: nil)
+    }
+
+    // MARK: - Hover / tap on the closed notch (tracking comes from the SwiftUI silhouette)
+
+    func notchHoverChanged(_ hovering: Bool) {
+        dispatch(hovering ? .hoverEntered : .hoverExited, on: nil)
+    }
+
+    /// Returns true when the click was consumed (the closed notch opened); false lets the
+    /// event continue to the views (buttons etc.) while the panel is open.
+    func notchTapped() -> Bool {
+        guard case .closed(parked: true) = machine.phase, let screen = targetScreen() else { return false }
+        dispatch(.notchTapped, on: screen)
+        return true
+    }
+
+    // MARK: - Reducer loop
+
+    /// Feeds one event to the machine and performs the resulting effects on `screen`
+    /// (the target screen; nil for events whose effects never need one).
+    private func dispatch(_ event: NotchEvent, on screen: NSScreen?) {
+        pendingEvents.append((event, screen))
+        guard !isDispatching else { return }
+        isDispatching = true
+        defer { isDispatching = false }
+        while !pendingEvents.isEmpty {
+            let (event, screen) = pendingEvents.removeFirst()
+            let pointerOnNotch: Bool
+            switch event {
+            case .closeTimerFired(hasNotch: true), .screenChanged(hasNotch: true):
+                // Hover arms from where the pointer is when the notch parks.
+                pointerOnNotch = isOnNotch(NSEvent.mouseLocation, slack: NotchLayout.hoverGrowth.width / 2)
+            default:
+                pointerOnNotch = false
+            }
+            for effect in machine.handle(event, pointerOnNotch: pointerOnNotch) {
+                perform(effect, on: screen)
+            }
+        }
+    }
+
+    private func perform(_ effect: NotchEffect, on screen: NSScreen?) {
+        switch effect {
+        // Window & geometry
+        case .configureGeometry:
+            if let screen { configureGeometry(for: screen) }
+
+        case .switchToOpenCanvas:
             // Grow the window to the full canvas (no animation: the silhouette keeps its place,
             // both frames are top-aligned and centred on the notch), start collapsed.
+            guard let screen else { return }
+            let window = ensureWindow(on: screen)
             var noAnim = Transaction(); noAnim.disablesAnimations = true
             withTransaction(noAnim) { state.canvasSize = NotchLayout.canvasSize }
             window.setFrame(windowFrame(for: screen), display: false)
             if state.isOpen { state.isOpen = false }
             if state.contentVisible { state.contentVisible = false }
-        }
-        window.ignoresMouseEvents = false
-        window.makeKeyAndOrderFront(nil)
-        isVisible = true
-        installLocalEventMonitor()
-        NotificationCenter.default.post(name: .panelWillShow, object: nil)
 
-        // Next run-loop turn: expand.
-        DispatchQueue.main.async { [state] in
-            withAnimation(NotchLayout.effectiveOpen) {
-                state.isSaving = false   // reopen from the saved pill: spring from its current width
-                state.isHovering = false // and from the hover swell, if any
-                state.isOpen = true
+        case .relayoutOpenWindow:
+            if let screen { window?.setFrame(windowFrame(for: screen), display: true) }
+
+        case .makeKeyAndOrderFront:
+            guard let screen else { return }
+            let window = ensureWindow(on: screen)
+            window.sharingType = .readOnly   // the open panel may appear in screenshots / sharing
+            window.makeKeyAndOrderFront(nil)
+
+        case .park:
+            if let screen { parkClosed(on: screen) }
+
+        case .orderOut:
+            resetOpenFlagsWithoutAnimation()
+            window?.ignoresMouseEvents = true
+            window?.orderOut(nil)
+
+        case .setIgnoresMouse(let ignores):
+            // During the collapse / saved hold no input is needed; clicks reach what is below.
+            window?.ignoresMouseEvents = ignores
+
+        case .resignFirstResponder:
+            window?.makeFirstResponder(nil)
+
+        // Monitors & notifications
+        case .installLocalMonitor:
+            installLocalEventMonitor()
+
+        case .removeLocalMonitor:
+            removeLocalEventMonitor()
+
+        case .postWillShow:
+            NotificationCenter.default.post(name: .panelWillShow, object: nil)
+
+        case .postDidHide:
+            NotificationCenter.default.post(name: .panelDidHide, object: nil)
+
+        // NotchState mutations
+        case .animateOpen:
+            // Next run-loop turn: expand.
+            DispatchQueue.main.async { [state] in
+                withAnimation(NotchLayout.effectiveOpen) {
+                    state.isSaving = false   // reopen from the saved pill: spring from its current width
+                    state.isHovering = false // and from the hover swell, if any
+                    state.isOpen = true
+                }
+                withAnimation(NotchLayout.effectiveContentIn) { state.contentVisible = true }
             }
-            withAnimation(NotchLayout.effectiveContentIn) { state.contentVisible = true }
-        }
-        let openGeneration = UUID()
-        self.openGeneration = openGeneration
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self, self.isVisible, self.openGeneration == openGeneration else { return }
-            self.state.isSettled = true
-        }
-        // SwiftUI's @FocusState can lose the race against the window becoming key,
-        // so re-assert keyboard focus on the title field once the content is in.
-        for delay in [0.12, 0.30] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                self?.focusTitleFieldIfNeeded()
+
+        case .animateClose:
+            if state.contentVisible {
+                withAnimation(NotchLayout.effectiveContentOut) { state.contentVisible = false }
             }
+            withAnimation(NotchLayout.effectiveClose) {
+                if state.isOpen { state.isOpen = false }
+                if state.isSaving { state.isSaving = false }
+            }
+
+        case .animateSaving:
+            withAnimation(NotchLayout.contentOutAnimation) { state.contentVisible = false }
+            withAnimation(NotchLayout.savingAnimation) {
+                state.isOpen = false
+                state.isSaving = true
+                state.savedBadgeShown = true   // same transaction as the button's removal → the ✓ flies
+            }
+
+        case .clearBadgeNoAnimation:
+            // Drop the badge and give the ✓ button its geometry back without animating either.
+            var noAnimation = Transaction()
+            noAnimation.disablesAnimations = true
+            withTransaction(noAnimation) { state.savedBadgeShown = false }
+
+        case .setSettled(let settled):
+            state.isSettled = settled
+
+        case .swellHover:
+            withAnimation(NotchLayout.hoverInAnimation) { state.isHovering = true }
+
+        case .unswellHover:
+            withAnimation(NotchLayout.hoverOutAnimation) { state.isHovering = false }
+
+        case .haptic:
+            NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+
+        // Timers
+        case .scheduleClose:
+            closeTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(NotchLayout.closeDuration))
+                guard !Task.isCancelled, let self else { return }
+                self.closeTask = nil
+                let screen = self.targetScreen()
+                let hasNotch = screen.map { self.shouldStayParked(on: $0) } ?? false
+                self.dispatch(.closeTimerFired(hasNotch: hasNotch), on: screen)
+            }
+
+        case .cancelClose:
+            closeTask?.cancel()
+            closeTask = nil
+
+        case .scheduleSaveHold:
+            saveTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(NotchLayout.savedHold))
+                guard !Task.isCancelled, let self else { return }
+                self.saveTask = nil
+                self.dispatch(.saveHoldElapsed, on: nil)
+            }
+
+        case .cancelSaveHold:
+            saveTask?.cancel()
+            saveTask = nil
+
+        case .scheduleSettle(let generation):
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.dispatch(.settleTimerFired(generation: generation), on: nil)
+            }
+
+        case .scheduleFocusRetries:
+            // SwiftUI's @FocusState can lose the race against the window becoming key,
+            // so re-assert keyboard focus on the title field once the content is in.
+            for delay in [0.12, 0.30] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                    self?.focusTitleFieldIfNeeded()
+                }
+            }
+
+        case .scheduleHoverDwell:
+            // A short dwell so a pointer merely crossing the notch on its way along the menu
+            // bar does not swell the shape or tap the trackpad.
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.hoverDwell = nil
+                self.dispatch(.hoverDwellElapsed(reduceMotion: NotchLayout.reduceMotion), on: nil)
+            }
+            hoverDwell = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + NotchLayout.hoverDwell, execute: work)
+
+        case .cancelHoverDwell:
+            hoverDwell?.cancel()
+            hoverDwell = nil
+
         }
     }
+
+    // MARK: - Focus
 
     /// Makes the first editable text field in the hosting view the first responder
     /// unless the user is already editing something.
     private func focusTitleFieldIfNeeded() {
-        guard isVisible, !state.isSaving, let window, let hostingView else { return }
+        guard machine.isVisible, !state.isSaving, let window, let hostingView else { return }
         if window.firstResponder is NSTextView { return }
         window.makeKey()
         if let field = Self.firstTextField(in: hostingView) {
@@ -135,73 +292,6 @@ final class PanelController {
         }
         return nil
     }
-
-    func hide() {
-        guard isVisible, let window else { return }
-        isVisible = false
-        saveTask?.cancel()
-        saveTask = nil
-        NotificationCenter.default.post(name: .panelDidHide, object: nil)
-
-        removeLocalEventMonitor()
-        window.ignoresMouseEvents = true   // the collapse needs no input; clicks reach what is below
-        state.isSettled = false
-        if state.contentVisible {
-            withAnimation(NotchLayout.effectiveContentOut) { state.contentVisible = false }
-        }
-        withAnimation(NotchLayout.effectiveClose) {
-            if state.isOpen { state.isOpen = false }
-            if state.isSaving { state.isSaving = false }
-        }
-
-        closeTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(NotchLayout.closeDuration))
-            guard !Task.isCancelled, let self, !self.isVisible else { return }
-            var noAnimation = Transaction()
-            noAnimation.disablesAnimations = true
-            withTransaction(noAnimation) { self.state.savedBadgeShown = false }
-            if let screen = self.targetScreen(), self.shouldStayParked(on: screen) {
-                self.parkClosed(on: screen)
-            } else {
-                window.ignoresMouseEvents = true
-                window.orderOut(nil)
-            }
-            self.closeTask = nil
-        }
-    }
-
-    /// Reminders-style "saved" choreography: the panel collapses to notch height but stays
-    /// wider at the sides, the ✓ flies into the right-hand extension and draws itself in,
-    /// then the notch returns to its normal size.
-    func collapseAfterSave() {
-        guard isVisible, !state.isSaving, let window else { return }
-        if NotchLayout.reduceMotion {
-            hide()
-            return
-        }
-        // Flip the guards first so nothing that ending editing might trigger can save again,
-        // then take input away: no clicks, no field editor, and the settle timer from show()
-        // must not drop the mask mid-choreography. The local key monitor stays installed and
-        // swallows keystrokes silently (no beeps) while the panel is still the key window.
-        openGeneration = UUID()
-        state.isSettled = false
-        withAnimation(NotchLayout.contentOutAnimation) { state.contentVisible = false }
-        withAnimation(NotchLayout.savingAnimation) {
-            state.isOpen = false
-            state.isSaving = true
-            state.savedBadgeShown = true   // same transaction as the button's removal → the ✓ flies
-        }
-        window.ignoresMouseEvents = true
-        window.makeFirstResponder(nil)
-        saveTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(NotchLayout.savedHold))
-            guard !Task.isCancelled, let self, self.isVisible else { return }
-            self.saveTask = nil
-            self.hide()
-        }
-    }
-
-    private var saveTask: Task<Void, Never>?
 
     // MARK: - Window & geometry
 
@@ -235,6 +325,7 @@ final class PanelController {
     }
 
     private func configureGeometry(for screen: NSScreen) {
+        NotchLayout.refreshTextScale()
         setClosedSize(NotchGeometry.closedShapeSize(for: screen, topCornerRadius: NotchLayout.closedTopRadius))
         if state.openSize != NotchLayout.openSize { state.openSize = NotchLayout.openSize }
     }
@@ -263,22 +354,30 @@ final class PanelController {
 
     /// Closed state on a notched display: a small, click-through-free window hugging the notch
     /// (hover-swollen size + margin), ordered in without taking key status.
+    /// (Hover arming is decided by the machine from the pointer position.)
+    /// A hide dispatched in the same run-loop turn as a show (before the async open block ran)
+    /// must not leave the parked window believing it is open.
+    private func resetOpenFlagsWithoutAnimation() {
+        var noAnim = Transaction(); noAnim.disablesAnimations = true
+        withTransaction(noAnim) {
+            if state.isOpen { state.isOpen = false }
+            if state.contentVisible { state.contentVisible = false }
+        }
+    }
+
     private func parkClosed(on screen: NSScreen) {
+        resetOpenFlagsWithoutAnimation()
         let window = ensureWindow(on: screen)
         var noAnim = Transaction(); noAnim.disablesAnimations = true
         withTransaction(noAnim) {
             state.canvasSize = state.closedCanvasSize
             if state.isHovering { state.isHovering = false }
         }
-        // Hover arms from where the pointer actually is: still on the notch → wait for it to
-        // leave first; anywhere else → the next entry swells immediately.
-        hoverArmed = !isOnNotch(NSEvent.mouseLocation, slack: NotchLayout.hoverGrowth.width / 2)
         window.setFrame(closedWindowFrame(for: screen), display: false)
         window.makeFirstResponder(nil)
         // The bleed around the notch stays out of screenshots / screen sharing while parked.
         // QR_CAPTURE_PARKED=1 keeps it capturable for development screenshots.
-        window.sharingType = ProcessInfo.processInfo.environment["QR_CAPTURE_PARKED"] == "1" ? .readOnly : .none
-        window.ignoresMouseEvents = false
+        window.sharingType = Self.captureParked ? .readOnly : .none
         // orderOut + orderFront in one turn hands key status back to the previous key window
         // without a visible flicker.
         window.orderOut(nil)
@@ -287,8 +386,13 @@ final class PanelController {
         // animates instead of waiting for the first ordinary redraw.
         window.contentView?.layoutSubtreeIfNeeded()
         window.displayIfNeeded()
-        isParked = true
+        // Accept mouse/tracking events only now: a hover exit synthesised while the window was
+        // being ordered would otherwise re-arm the hover the machine just disarmed.
+        window.ignoresMouseEvents = false
     }
+
+    /// `QR_CAPTURE_PARKED=1` keeps the parked window capturable (dev screenshots, E2E); read once.
+    private static let captureParked = ProcessInfo.processInfo.environment["QR_CAPTURE_PARKED"] == "1"
 
     private func closedWindowFrame(for screen: NSScreen) -> NSRect {
         let size = state.closedCanvasSize
@@ -298,18 +402,7 @@ final class PanelController {
 
     private func relayout() {
         guard let screen = targetScreen() else { return }
-        configureGeometry(for: screen)
-        if isVisible {
-            window?.setFrame(windowFrame(for: screen), display: true)
-        } else if closeTask == nil {
-            if shouldStayParked(on: screen) {
-                parkClosed(on: screen)
-            } else if let window, isParked {
-                window.ignoresMouseEvents = true
-                window.orderOut(nil)
-                isParked = false
-            }
-        }
+        dispatch(.screenChanged(hasNotch: shouldStayParked(on: screen)), on: screen)
     }
 
     // MARK: - Global mouse handling
@@ -324,7 +417,7 @@ final class PanelController {
             let type = event.type
             let handle: @MainActor () -> Void = {
                 guard let self else { return }
-                if self.isVisible {
+                if self.machine.isVisible {
                     self.hide()
                 } else if type == .leftMouseDown, self.isOnNotch(NSEvent.mouseLocation) {
                     self.show()
@@ -344,7 +437,7 @@ final class PanelController {
     private func installLocalEventMonitor() {
         guard localEventMonitor == nil else { return }
         localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown]) { [weak self] event in
-            guard let self, self.isVisible, event.window === self.window else { return event }
+            guard let self, self.machine.isVisible, event.window === self.window else { return event }
             if event.type == .keyDown {
                 if event.keyCode == 53 { // Esc
                     self.hide()
@@ -372,7 +465,6 @@ final class PanelController {
         }
     }
 
-    /// Hit-test against the open silhouette (top-anchored, centred) in the hosting view's flipped-or-not coords.
     /// Hit-test against the silhouette as currently drawn (top-anchored, centred in the canvas).
     private func silhouetteContains(_ point: CGPoint, in bounds: CGRect) -> Bool {
         guard let hostingView else { return false }
@@ -394,42 +486,6 @@ final class PanelController {
             }
         }
         return false
-    }
-
-    // MARK: - Hover / tap on the closed notch (tracking comes from the SwiftUI silhouette)
-
-    func notchHoverChanged(_ hovering: Bool) {
-        guard isParked, !isVisible else { return }
-        if hovering {
-            guard hoverArmed, !state.isHovering, hoverDwell == nil else { return }
-            // A short dwell so a pointer merely crossing the notch on its way along the menu
-            // bar does not swell the shape or tap the trackpad.
-            let work = DispatchWorkItem { [weak self] in
-                guard let self, self.isParked, !self.isVisible, self.hoverArmed else { return }
-                self.hoverDwell = nil
-                if !NotchLayout.reduceMotion {
-                    withAnimation(NotchLayout.hoverInAnimation) { self.state.isHovering = true }
-                }
-                NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
-            }
-            hoverDwell = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + NotchLayout.hoverDwell, execute: work)
-        } else {
-            cancelHoverDwell()
-            hoverArmed = true
-            guard state.isHovering else { return }
-            withAnimation(NotchLayout.hoverOutAnimation) { state.isHovering = false }
-        }
-    }
-
-    private func cancelHoverDwell() {
-        hoverDwell?.cancel()
-        hoverDwell = nil
-    }
-
-    func notchTapped() {
-        guard !isVisible else { return }
-        show()
     }
 }
 

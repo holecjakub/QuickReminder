@@ -58,7 +58,7 @@ Sources/QuickReminder/
 │   ├── HotkeyManager.swift         Carbon RegisterEventHotKey (no Accessibility permission) + HotkeyRecorderView
 │   └── Preferences.swift
 └── Settings/SettingsView.swift
-Tests/QuickReminderTests.swift      assertion runner (Scripts/test.sh)
+Tests/QuickReminderCoreTests/       Swift Testing suite (swift test / Scripts/test.sh)
 ```
 
 Dependencies: AppKit, SwiftUI, EventKit, Carbon. No packages.
@@ -95,11 +95,12 @@ Dependencies: AppKit, SwiftUI, EventKit, Carbon. No packages.
 | Dotted circle | 21 pt, 1.5 pt stroke, #59595D, round dots |
 | Title | 19 pt regular, white; placeholder #59595D |
 | Notes | 15 pt regular; placeholder #59595D |
-| Pill | 44 pt tall capsule, fill white 3 %, 1 pt stroke #3D3D3F; icons `calendar.badge.clock` 24 pt, `location` 22 pt, `flag` 22 pt, 38 pt hit areas, 55 pt centre spacing |
+| Pill | 44 pt tall capsule, fill white 3 %, 1 pt stroke #3D3D3F; icons `calendar.badge.clock`, `location`, `flag` rendered through AppKit's `NSImage.SymbolConfiguration` at 22 pt (optically balanced: 26 × 21.5 / 21 × 20 / 19 × 21 pt visible — SwiftUI's `Image(systemName:)` draws the badge symbol markedly smaller), 38 pt hit areas, 55 pt centre spacing |
 | Save ✓ | 48 pt circle, #474749 disabled / #0A84FF enabled, `checkmark` 22 pt semibold |
 | Active states | date → blue icon + chip; location → `location.fill` blue; flag → `flag.fill` orange (1.0, 0.62, 0.04) |
 | Pointer | hand cursor, 1.06× hover, 0.94× press on every control |
 | Vertical rhythm | notch band 38 → 8 → header → 10 → input → ≥ 14 → bottom bar → 22 bottom |
+| Text size | Every font and control metric is multiplied by `NotchLayout.textScale` = system body size ÷ 13 (System Settings → Accessibility → Display → Text size, incl. per-app), clamped 0.85–1.6; the open panel height scales with it (`38 + 176 × scale`), width up to 1.3×. Display scaling (Displays → resolution) needs nothing: all geometry is in points and the notch is read live from `NSScreen`. `QR_TEXT_SCALE=1.3` forces a scale for layout checks. |
 
 ---
 
@@ -115,8 +116,8 @@ Dependencies: AppKit, SwiftUI, EventKit, Carbon. No packages.
 
 ## 6. Build & test
 
-- `./build.sh` / `./build.sh run` — direct `swiftc` build (Release: `-O -wmo -dead_strip`; `CONFIGURATION=Debug` for `-Onone -g`) + hand-assembled bundle (works without accepting the Xcode license); `xcodegen generate` keeps the `.xcodeproj` in sync.
-- `Scripts/test.sh` — compiles sources + `Tests/` into a runner: NotchShape geometry, NotchGeometry, NotchLayout, Shortcut encoding.
+- `./build.sh` / `./build.sh run` — direct `swiftc` build (Release: `-O -wmo -dead_strip`; `CONFIGURATION=Debug` for `-Onone -g`) + hand-assembled bundle (works without accepting the Xcode license); `xcodegen generate` keeps the `.xcodeproj` in sync. Unaffected by the SwiftPM package below (it still compiles `Sources/` directly with `swiftc`).
+- `swift test` / `Scripts/test.sh` — Swift Testing suite in `Tests/QuickReminderCoreTests`, run against the `QuickReminderCore` SwiftPM library target (`Package.swift`) that wraps `Sources/QuickReminder` (minus the `@main` app file): NotchShape/NotchGeometry geometry and hit-testing, NotchState size precedence, NaturalDateParser (~240 cases), HotkeyManager.Shortcut, SuggestionDateFormatter. `Scripts/test.sh` passes extra arguments through (e.g. `--filter`) and prints a one-line summary.
 - `Scripts/shot.sh <name> [-R x,y,w,h | --full]` — screenshots into `build/shots/` (override with `QR_SHOT_DIR`).
 
 ---

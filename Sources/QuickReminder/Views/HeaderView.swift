@@ -21,11 +21,11 @@ struct HeaderView: View {
             } label: {
                 HStack(alignment: .center, spacing: 7) {
                     Text(selectedListName)
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.system(size: Theme.s(22), weight: .bold))
                         .foregroundStyle(Theme.accent)
                         .lineLimit(1)
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: Theme.s(13), weight: .bold))
                         .foregroundStyle(Theme.accent)
                         .offset(y: 0.5)
                 }
@@ -47,11 +47,11 @@ struct HeaderView: View {
                 ZStack {
                     Circle().fill(Theme.grayCircle)
                     Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: Theme.s(11), weight: .bold))
                         .foregroundStyle(.white)
                 }
-                .frame(width: 24, height: 24)
-                .frame(width: 36, height: 36)
+                .frame(width: Theme.s(24), height: Theme.s(24))
+                .frame(width: Theme.s(36), height: Theme.s(36))
                 .contentShape(Circle())
             }
             .buttonStyle(HoverButtonStyle())

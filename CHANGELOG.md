@@ -4,7 +4,12 @@ All notable changes to QuickReminder. Format: [Keep a Changelog](https://keepach
 
 ## Unreleased
 
+- Pill icons (calendar, location, flag) are optically the same size: rendered through AppKit's symbol configuration instead of SwiftUI's symbol image, which drew the badge symbol much smaller.
+- The panel respects the system text size (Accessibility → Display → Text size): fonts, controls and the panel height scale with it.
+- Panel state machine extracted into a pure `NotchMachine` reducer with exhaustive sequence tests; unit tests moved to Swift Testing (`swift test`, SwiftPM `QuickReminderCore` target).
+
 - Hovering the notch swells the closed silhouette with a small spring and taps the trackpad; click and hover now come from the always-on notch window instead of global mouse monitoring.
+- E2E: local end-to-end smoke suite (`Scripts/e2e.sh`) drives the real built app with `osascript` keystrokes and a CGEvent click helper, asserting on screenshot pixels — hotkey/click/Esc open-close, EN/CZ suggestion chips, hover swell vs. quick crossing, outside/margin click to close, reopen-during-close, and a guarded save choreography check. See `docs/testing.md`.
 
 ## 0.1.0
 

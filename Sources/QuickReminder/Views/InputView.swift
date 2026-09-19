@@ -11,14 +11,14 @@ struct InputView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            DashedCircleView()
+            DashedCircleView(size: Theme.s(21))
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 1) {
                 PlaceholderTextField(
                     placeholder: "New Reminder",
                     text: $title,
-                    font: .system(size: 19, weight: .regular),
+                    font: .system(size: Theme.s(19), weight: .regular),
                     placeholderColor: Theme.placeholder,
                     onSubmit: onSubmit
                 )
@@ -28,7 +28,7 @@ struct InputView: View {
                 PlaceholderTextField(
                     placeholder: "Notes",
                     text: $notes,
-                    font: .system(size: 15, weight: .regular),
+                    font: .system(size: Theme.s(15), weight: .regular),
                     placeholderColor: Theme.placeholderSecondary,
                     onSubmit: onSubmit
                 )

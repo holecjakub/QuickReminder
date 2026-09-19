@@ -30,4 +30,14 @@ final class NotchWindow: NSPanel {
     override func cancelOperation(_ sender: Any?) {
         PanelController.shared.hide()
     }
+
+    /// A mouse-down on the parked (closed) notch opens the panel. Handled here rather than
+    /// with a SwiftUI gesture so a click landing mid hover-swell animation cannot be missed;
+    /// black pixels are the only ones that receive events (transparent margins pass through).
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown, PanelController.shared.notchTapped() {
+            return
+        }
+        super.sendEvent(event)
+    }
 }
