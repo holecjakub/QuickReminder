@@ -64,11 +64,13 @@ jobs:
           security default-keychain -s build.keychain
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security set-keychain-settings -lut 21600 build.keychain
+          # The keychain must be in the search list, or codesign cannot build the certificate
+          # chain at signing time (signature ends up with "Authority=(unavailable)").
+          security list-keychains -d user -s build.keychain $(security list-keychains -d user | tr -d '"')
           security import "$RUNNER_TEMP/certificate.p12" -k build.keychain -P "$MACOS_CERTIFICATE_PWD" -T /usr/bin/codesign
-          # The Developer ID intermediate CA is not in a fresh runner keychain; without it codesign
-          # cannot complete the chain and the signature carries "Authority=(unavailable)".
-          curl -sSfL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$RUNNER_TEMP/DeveloperIDG2CA.cer"
-          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k build.keychain -T /usr/bin/codesign
+          # Developer ID intermediate CA (a no-op when the .p12 already carries it).
+          curl -sSfL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" \
+            && security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k build.keychain -T /usr/bin/codesign 2>/dev/null || true
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           rm -f "$RUNNER_TEMP/certificate.p12" "$RUNNER_TEMP/DeveloperIDG2CA.cer"
           SIGN_ID="$(security find-identity -v -p codesigning build.keychain | awk '/Developer ID Application/ {print $2; exit}')"
@@ -85,7 +87,8 @@ jobs:
         run: |
           ./build.sh
           codesign --verify --deep --strict --verbose=2 build/QuickReminder.app
-          codesign -dv build/QuickReminder.app 2>&1 | grep -E "Authority=Developer ID" || { echo "::error::not Developer-ID signed"; exit 1; }
+          codesign -dv --verbose=4 build/QuickReminder.app 2>&1 | grep -E "Authority=|Identifier=|TeamIdentifier=|flags=" || true
+          codesign -dv build/QuickReminder.app 2>&1 | grep -E "Authority=Developer ID" || { echo "::error::not Developer-ID signed (see the codesign output above)"; exit 1; }
 
       - name: Package (zip + DMG)
         env:
