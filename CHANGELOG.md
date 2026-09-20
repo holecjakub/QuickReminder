@@ -4,6 +4,7 @@ All notable changes to QuickReminder. Format: [Keep a Changelog](https://keepach
 
 ## Unreleased
 
+- `NOTICE.md`: trademark notice and acknowledgements of the notch projects whose published geometry the silhouette follows (DynamicNotchKit, NotchDrop, boring.notch); README and SPEC say “inspired by” the iOS overlay instead of “recreates 1:1”; `reference/` ignores images so no third-party screenshot can be committed again.
 - The panel takes the selected reminder list's colour (header, ✓, chips, caret, saved badge).
 - Hover feedback follows macOS HIG: a soft highlight behind controls instead of scaling; the date menu is a native popup from a plain button, so the pill row no longer shifts on hover.
 

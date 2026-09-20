@@ -1,8 +1,8 @@
 # QuickReminder
 
-A macOS 26 menu bar app that recreates the **iOS 26 “Quick Reminder” overlay** 1:1 — and, because we are on a Mac, the panel animates **out of the MacBook notch** (boring.notch / NotchNook style): the black notch grows into a wide panel, you type, hit `⌘↩`, the checkmark flies into the notch, and it collapses back.
+A macOS 26 menu bar app inspired by the **iOS 26 “Quick Reminder” overlay**, matched to its measured metrics — and, because we are on a Mac, the panel animates **out of the MacBook notch** (boring.notch / NotchNook style): the black notch grows into a wide panel, you type, hit `⌘↩`, the checkmark flies into the notch, and it collapses back.
 
-> Not affiliated with, endorsed by or sponsored by Apple Inc. Apple, macOS, iOS, Xcode, SF Symbols and Reminders are trademarks of Apple Inc. QuickReminder is an independent, from-scratch implementation using only public Apple frameworks; it contains no Apple source code or assets and uses no private APIs. It reads and writes your reminders through the public EventKit framework.
+> Not affiliated with, endorsed by or sponsored by Apple Inc. Apple, macOS, iOS, Xcode, SF Symbols and Reminders are trademarks of Apple Inc. QuickReminder is an independent, from-scratch implementation using only public Apple frameworks; it contains no Apple source code or assets and uses no private APIs. It reads and writes your reminders through the public EventKit framework. Details and third-party acknowledgements: `NOTICE.md`.
 
 Design reference: the iOS 26 quick-reminder overlay, measured metrics in `SPEC.md` §4 · Notch research: `reference/notch-research.md`
 
@@ -64,4 +64,4 @@ Releases are tagged `vX.Y.Z` and published on GitHub with a notarized `.dmg` and
 
 ## License
 
-MIT — see `LICENSE`.
+MIT — see `LICENSE`. Trademark notice and third-party acknowledgements: `NOTICE.md`.
