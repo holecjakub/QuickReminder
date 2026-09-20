@@ -132,7 +132,7 @@ struct NotchMachineTests {
         #expect(m.phase == .closing)
         #expect(m.badgeShown, "the badge fades in place; it is only dropped once the window is parked")
         #expect(!hold.contains(.cancelSaveHold), "the hold ran out on its own")
-        #expect(hold.contains(.postDidHide) && hold.contains(.removeLocalMonitor) && hold.contains(.animateClose) && hold.contains(.scheduleClose))
+        #expect(hold.contains(.postDidHide) && hold.contains(.removeLocalMonitor) && hold.contains(.resignFirstResponder) && hold.contains(.animateClose) && hold.contains(.scheduleClose))
 
         let close = m.handle(.closeTimerFired(hasNotch: true))
         #expect(m.phase == .closed(parked: true))

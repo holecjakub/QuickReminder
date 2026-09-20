@@ -244,7 +244,9 @@ struct NotchMachine: Hashable, Sendable {
         var effects: [NotchEffect] = []
         if phase == .saving && cancellingHold { effects.append(.cancelSaveHold) }
         phase = .closing
-        effects += [.postDidHide, .removeLocalMonitor, .setIgnoresMouse(true), .setSettled(false), .animateClose, .scheduleClose]
+        // resignFirstResponder: the panel stays key for the 0.36 s collapse; without it a Return
+        // typed right after Esc would still reach the text view and save the dismissed draft.
+        effects += [.postDidHide, .removeLocalMonitor, .resignFirstResponder, .setIgnoresMouse(true), .setSettled(false), .animateClose, .scheduleClose]
         return effects
     }
 

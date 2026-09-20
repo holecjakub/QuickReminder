@@ -54,7 +54,12 @@ RUN_DIR="$ROOT/build/e2e/$TIMESTAMP"
 SHOT_DIR="$RUN_DIR"
 LOG_DIR="$RUN_DIR/logs"
 # Retention: keep the five most recent run directories (each is ~10 MB of screenshots).
-ls -1dt "$ROOT"/build/e2e/*/ 2>/dev/null | tail -n +6 | xargs rm -rf 2>/dev/null || true
+# Path-safe (the repo path contains a space) and symlink-safe: only real directories
+# directly under build/e2e are ever removed.
+while IFS= read -r d; do
+    [[ "$d" == "$ROOT/build/e2e/"* && -d "${d%/}" && ! -L "${d%/}" ]] || continue
+    rm -rf -- "$d"
+done < <(ls -1dt "$ROOT"/build/e2e/*/ 2>/dev/null | tail -n +6)
 mkdir -p "$SHOT_DIR" "$LOG_DIR"
 
 # shellcheck source=Scripts/e2e/lib.sh
@@ -138,6 +143,8 @@ launch_test_instance() {
     sleep 0.4
     # The dev build shares UserDefaults with the installed app; force the default ⇧⌘R hotkey
     # through the argument domain (a non-Data value makes HotkeyManager fall back to .default).
+    # Nothing is persisted by this: the argument domain lives in memory only. (Recording a new
+    # hotkey in the *test* instance's Settings would write to the shared persistent domain.)
     QR_CAPTURE_PARKED=1 "$APP_BIN" -hotkey e2e-default >"$LOG_DIR/app.log" 2>&1 &
     disown
     sleep 1.2
@@ -461,7 +468,7 @@ for scenario in "${ALL_SCENARIOS[@]}"; do
 done
 
 # Leave things closed and tidy before handing back / relaunching.
-press_escape 2>/dev/null || true
+reset_to_closed 2>/dev/null || true
 move_to 500 500 2>/dev/null || true
 
 echo "----"

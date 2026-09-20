@@ -124,3 +124,4 @@ one of these directly.
   needs Screen Recording permission for your terminal.
 - Coordinates are calibrated for a 14" MacBook Pro (1800 × 1169 pt, notch at x ≈ 901);
   other notched Macs need the constants in `Scripts/e2e/lib.sh` adjusted.
+- The suggestion-chip checks detect the chip by colour saturation, so they FAIL (safely) when the selected list has a grey, brown or very dark colour; pick a coloured list before running.
