@@ -124,7 +124,7 @@ final class PanelController {
             guard let screen else { return }
             let window = ensureWindow(on: screen)
             var noAnim = Transaction(); noAnim.disablesAnimations = true
-            withTransaction(noAnim) { state.canvasSize = NotchLayout.canvasSize }
+            withTransaction(noAnim) { state.canvasSize = NotchLayout.canvasSize(for: state.openSize) }
             window.setFrame(windowFrame(for: screen), display: false)
             if state.isOpen { state.isOpen = false }
             if state.contentVisible { state.contentVisible = false }
@@ -327,7 +327,9 @@ final class PanelController {
     private func configureGeometry(for screen: NSScreen) {
         NotchLayout.refreshTextScale()
         setClosedSize(NotchGeometry.closedShapeSize(for: screen, topCornerRadius: NotchLayout.closedTopRadius))
-        if state.openSize != NotchLayout.openSize { state.openSize = NotchLayout.openSize }
+        // The open body is the notch band actually on this display plus the content rhythm.
+        let open = NotchLayout.openSize(notchBandHeight: state.closedSize.height)
+        if state.openSize != open { state.openSize = open }
     }
 
     /// Publishing unchanged values would re-render the whole panel for nothing.
@@ -337,7 +339,7 @@ final class PanelController {
 
     /// Window covers the fully-open panel, anchored to the top edge, centred on the notch.
     private func windowFrame(for screen: NSScreen) -> NSRect {
-        let size = NotchLayout.canvasSize
+        let size = NotchLayout.canvasSize(for: state.openSize)
         let centerX: CGFloat
         if let notch = NotchGeometry.notchRect(for: screen) {
             centerX = notch.midX

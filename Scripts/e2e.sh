@@ -180,7 +180,7 @@ reset_to_closed() {
     # Esc goes to the frontmost app when the panel is closed, so only send it when a quick
     # dark-region check says the panel (or its collapse) is on screen.
     local png; png=$(shot "reset_probe")
-    local n; n=$(dark_count "$png" 0 0 600 214 20)
+    local n; n=$(dark_count "$png" 0 0 "$PANEL_W" "$PANEL_H" 20)
     if [[ "$n" -ge "$DARK_CLOSED_MAX" ]]; then
         press_escape
     fi
@@ -193,11 +193,11 @@ fail() {
     return 1
 }
 
-# Grey/blue save button (not wallpaper) around global (1138,170), i.e. local
-# (537,150)-(577,190) in the 601,0-anchored panel region.
+# Grey/blue save button (not wallpaper): the ✓ circle spans y 173-221 (39 + 134 + 48) and
+# x 532-580 of the 601,0-anchored panel region; sample its left-centre 40x40.
 assert_save_button_present() {
     local png="$1"
-    local n; n=$(dark_count "$png" 517 150 40 40 150)
+    local n; n=$(dark_count "$png" 530 177 40 40 150)
     if [[ "$n" -lt 3000 ]]; then
         fail "save button region looks like wallpaper (n=$n)"
         return 1
@@ -223,7 +223,7 @@ type_suggestion_tab() {
     type_text "Buy milk tomorrow at 2pm"
     sleep 0.5
     local png_before; png_before=$(shot "type_suggestion_tab_typed")
-    local chip; chip=$(saturated_count "$png_before" 20 105 260 45)
+    local chip; chip=$(saturated_count "$png_before" 20 130 260 40)
     if [[ "$chip" -lt 200 ]]; then
         fail "expected a suggestion chip (saturated=$chip)"
         return 1
@@ -254,7 +254,7 @@ czech_suggestion() {
     type_text "Zavolat mámě zítra ve 14:00"
     sleep 0.5
     local png; png=$(shot "czech_suggestion_typed")
-    local chip; chip=$(saturated_count "$png" 20 105 260 45)
+    local chip; chip=$(saturated_count "$png" 20 130 260 40)
     if [[ "$chip" -lt 200 ]]; then
         fail "expected a suggestion chip for Czech input (saturated=$chip)"
         return 1
@@ -365,7 +365,7 @@ reopen_during_close() {
     hotkey_toggle
     sleep 0.8
     local png; png=$(shot "reopen_during_close_open2")
-    local n; n=$(dark_count "$png" 0 0 600 214 20)
+    local n; n=$(dark_count "$png" 0 0 "$PANEL_W" "$PANEL_H" 20)
     if [[ "$n" -lt "$DARK_OPEN_MIN" ]]; then
         fail "expected panel open again after interrupting the close (dark=$n)"
         return 1

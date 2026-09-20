@@ -67,6 +67,22 @@ struct NotchStateTests {
 
     @Test func notchLayoutInvariants() {
         #expect(NotchLayout.openSize.height > 38 + 150, "open panel leaves room for header, input and bottom bar")
+        #expect(NotchLayout.openSize(notchBandHeight: 50).height == NotchLayout.openSize(notchBandHeight: 39).height + 11,
+                "the notch band is added on top of the content, not scaled")
+        #expect(NotchLayout.canvasSize(for: NotchLayout.openSize).width == NotchLayout.openSize.width + 48)
         #expect(NotchLayout.closeDuration >= 0.3, "window stays until the close spring settles")
+    }
+
+    /// The panel height is the sum of the view constants (SPEC §4 "Vertical rhythm"); an
+    /// undersized frame would centre and clip the stack, a taller one would float the ✓ button.
+    @Test func openHeightFollowsTheRhythm() {
+        for scale in [0.85, 1.0, 1.3, 1.6] as [CGFloat] {
+            func sc(_ v: CGFloat) -> CGFloat { (v * scale).rounded(.toNearestOrEven) }
+            let input = PlainTextView.lineHeight(for: sc(19)) + 2 + 1 + PlainTextView.lineHeight(for: sc(15)) + 2
+            let expected = 8 + sc(36) + 10 + input + sc(26) + 8 + sc(48) + Theme.horizontalPadding
+            #expect(NotchLayout.contentHeight(textScale: scale) == expected, "rhythm at scale \(scale)")
+        }
+        #expect(NotchLayout.contentHeight(textScale: 1) == 202, "8 + 36 + 10 + (25 + 1 + 20) + 26 + 8 + 48 + 20")
+        #expect(NotchLayout.contentHeight(textScale: 1.6) > NotchLayout.contentHeight(textScale: 1))
     }
 }

@@ -4,6 +4,8 @@ All notable changes to QuickReminder. Format: [Keep a Changelog](https://keepach
 
 ## Unreleased
 
+- The open panel is exactly as tall as its content: the ✓ button now sits 20 pt from the bottom edge, the same as from the right edge (the stack used to overflow an undersized 214 pt frame and was centred-and-clipped by 13 pt at both ends). `NotchLayout.contentHeight` sums the vertical rhythm and is pinned by a unit test.
+
 - `NOTICE.md`: trademark notice and acknowledgements of the notch projects whose published geometry the silhouette follows (DynamicNotchKit, NotchDrop, boring.notch); README and SPEC say “inspired by” the iOS overlay instead of “recreates 1:1”; `reference/` ignores images so no third-party screenshot can be committed again.
 - The panel takes the selected reminder list's colour (header, ✓, chips, caret, saved badge).
 - Hover feedback follows macOS HIG: a soft highlight behind controls instead of scaling; the date menu is a native popup from a plain button, so the pill row no longer shifts on hover.

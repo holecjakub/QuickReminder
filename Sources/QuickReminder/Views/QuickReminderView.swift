@@ -88,7 +88,7 @@ struct QuickReminderView: View {
                 saveNamespace: saveNamespace,
                 saveButtonYielded: saveButtonYielded
             )
-            .padding(.bottom, 22)
+            .padding(.bottom, Theme.horizontalPadding)   // same inset below the ✓ as beside it
         }
         .padding(.horizontal, Theme.horizontalPadding + NotchLayout.openTopRadius)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
