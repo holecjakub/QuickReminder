@@ -36,10 +36,12 @@ final class PopUpMenu: NSObject {
         // Screen coordinates (Cocoa, bottom-left origin) — `in: nil` pops relative to the screen.
         var point = NSEvent.mouseLocation
         if let x, let window = NSApp.keyWindow {
-            // Visible panel bottom = window bottom + overshoot padding; drop the menu right below it.
-            point = NSPoint(x: x, y: window.frame.minY + NotchLayout.overshootPadding - 4)
+            // Visible panel bottom = window bottom + overshoot padding. With `positioning: nil` the
+            // point is the menu's top-left corner (the first item sits below the menu's own top
+            // inset), so a 2 pt gap keeps the whole menu clear of the panel.
+            point = NSPoint(x: x, y: window.frame.minY + NotchLayout.overshootPadding - 2)
         }
-        menu.popUp(positioning: menu.items.first, at: point, in: nil)
+        menu.popUp(positioning: nil, at: point, in: nil)
     }
 
     @objc private func menuItemSelected(_ sender: NSMenuItem) {
