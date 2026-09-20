@@ -30,7 +30,8 @@ struct InputView: View {
                     pointSize: Theme.s(15),
                     placeholderColor: Theme.placeholderSecondary,
                     identifier: "notes",
-                    onSubmit: onSubmit
+                    onSubmit: onSubmit,
+                    maxLength: 10_000
                 )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -48,6 +49,7 @@ struct PlaceholderTextField: View {
     let identifier: String
     let onSubmit: () -> Void
     var onTab: () -> Bool = { false }
+    var maxLength: Int = 2_000
     @Environment(\.listAccent) private var accent
 
     var body: some View {
@@ -58,7 +60,8 @@ struct PlaceholderTextField: View {
                 accent: accent,
                 identifier: identifier,
                 onSubmit: onSubmit,
-                onTab: onTab
+                onTab: onTab,
+                maxLength: maxLength
             )
             Text(placeholder)
                 .font(.system(size: pointSize, weight: .regular))

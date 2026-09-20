@@ -18,6 +18,8 @@ struct PlainTextView: NSViewRepresentable {
     var onSubmit: () -> Void
     /// Return true to consume Tab; false lets focus move to the next field.
     var onTab: () -> Bool = { false }
+    /// Hard cap on the field's length (a multi-MB paste would stall layout and the parser).
+    var maxLength: Int = 2_000
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -63,6 +65,8 @@ struct PlainTextView: NSViewRepresentable {
         apply(to: textView)
         if textView.string != text {
             textView.string = text
+            // A programmatic reset (new draft) must not leave the old draft on the undo stack.
+            textView.undoManager?.removeAllActions()
         }
         // Keep the text view as tall as the row so the caret and the glyphs stay put.
         let rowHeight = scroll.bounds.height
@@ -93,10 +97,26 @@ struct PlainTextView: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
-            // Paste can bring newlines; keep it single-line.
-            let flat = textView.string.replacingOccurrences(of: "\n", with: " ")
-            if flat != textView.string { textView.string = flat }
-            if parent.text != flat { parent.text = flat }
+            if parent.text != textView.string { parent.text = textView.string }
+        }
+
+        /// Keeps the field single-line and bounded *before* the change lands (so selection and
+        /// undo stay consistent): every kind of line break (\r, \n, U+0085, U+2028, U+2029) in a
+        /// paste becomes a space, and the result is capped at `maxLength`.
+        func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange, replacementString: String?) -> Bool {
+            guard let replacement = replacementString else { return true }   // attribute-only change
+            let flat = replacement.components(separatedBy: .newlines).joined(separator: " ")
+            let resulting = textView.string.utf16.count - affectedCharRange.length + flat.utf16.count
+            if flat != replacement || resulting > parent.maxLength {
+                let room = max(0, parent.maxLength - (textView.string.utf16.count - affectedCharRange.length))
+                let clipped = String(flat.utf16.prefix(room)) ?? ""
+                if textView.shouldChangeText(in: affectedCharRange, replacementString: clipped) {
+                    textView.replaceCharacters(in: affectedCharRange, with: clipped)
+                    textView.didChangeText()
+                }
+                return false
+            }
+            return true
         }
 
         func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
@@ -104,6 +124,8 @@ struct PlainTextView: NSViewRepresentable {
             case #selector(NSResponder.insertNewline(_:)):
                 parent.onSubmit()
                 return true
+            case #selector(NSResponder.insertLineBreak(_:)), #selector(NSResponder.insertParagraphSeparator(_:)):
+                return true   // single line: swallow ⌃↩ / ⌥↩ line breaks
             case #selector(NSResponder.insertTab(_:)):
                 if parent.onTab() { return true }
                 textView.window?.selectNextKeyView(nil)
