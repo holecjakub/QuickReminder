@@ -1,8 +1,12 @@
 name: Release
 
-# Builds, signs (Developer ID), notarizes and publishes a GitHub Release when a version tag is pushed.
+# Builds, signs (Developer ID), notarizes and — unless a release for the tag already exists —
+# publishes a GitHub Release when a version tag is pushed. `Scripts/release.sh` is the canonical
+# publisher (it pushes the tag *after* publishing the locally notarized artefacts); this workflow
+# then acts as an independent verification build and only creates the release when the tag was
+# pushed by hand.
 #
-# Required repository secrets (set with Scripts/setup-release-secrets.sh):
+# Secrets live in the `release` environment (set with Scripts/setup-release-secrets.sh):
 #   MACOS_CERTIFICATE        base64 of the "Developer ID Application" .p12
 #   MACOS_CERTIFICATE_PWD    password of that .p12
 #   KEYCHAIN_PASSWORD        any random password for the ephemeral CI keychain
@@ -26,32 +30,43 @@ jobs:
   release:
     name: Sign, notarize, release
     runs-on: macos-26
+    timeout-minutes: 40
+    environment: release
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@1242409711ff5721add51979e9e11e23ebb7e5a4 # v1
         with:
           xcode-version: latest-stable
 
-      - name: Determine version
+      - name: Determine and validate version
         id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-          fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then v="${GITHUB_REF#refs/tags/v}"; else v="$INPUT_VERSION"; fi
+          [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || { echo "::error::bad version '$v'"; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"
 
       - name: Verify secrets
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
           ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
-          for v in MACOS_CERTIFICATE ASC_API_KEY_P8 ASC_ISSUER_ID; do
+          for v in MACOS_CERTIFICATE MACOS_CERTIFICATE_PWD KEYCHAIN_PASSWORD ASC_API_KEY_P8 ASC_KEY_ID ASC_ISSUER_ID; do
             [[ -n "${!v}" ]] || { echo "::error::secret $v is not set"; exit 1; }
           done
+
+      # Tests run before any signing material is in the keychain.
+      - name: Unit checks
+        run: Scripts/test.sh
 
       - name: Import Developer ID certificate
         env:
@@ -71,14 +86,11 @@ jobs:
           # Developer ID intermediate CA (a no-op when the .p12 already carries it).
           curl -sSfL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" \
             && security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k build.keychain -T /usr/bin/codesign 2>/dev/null || true
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain >/dev/null
           rm -f "$RUNNER_TEMP/certificate.p12" "$RUNNER_TEMP/DeveloperIDG2CA.cer"
           SIGN_ID="$(security find-identity -v -p codesigning build.keychain | awk '/Developer ID Application/ {print $2; exit}')"
           [[ -n "$SIGN_ID" ]] || { echo "::error::no Developer ID Application identity imported"; exit 1; }
           echo "SIGN_ID=$SIGN_ID" >> "$GITHUB_ENV"
-
-      - name: Unit checks
-        run: Scripts/test.sh
 
       - name: Build (Release, Developer ID, timestamped)
         env:
@@ -87,9 +99,10 @@ jobs:
         run: |
           ./build.sh
           codesign --verify --deep --strict --verbose=2 build/QuickReminder.app
-          codesign -dv --verbose=4 build/QuickReminder.app 2>&1 | grep -E "Authority=|Identifier=|TeamIdentifier=|flags=" || true
-          # Authority lines need --verbose=4 on current codesign.
-          codesign -dv --verbose=4 build/QuickReminder.app 2>&1 | grep -qE "Authority=Developer ID Application" || { echo "::error::not Developer-ID signed (see the codesign output above)"; exit 1; }
+          SIGN_INFO="$(codesign -dv --verbose=4 build/QuickReminder.app 2>&1)"
+          grep -E "Authority=|Identifier=|TeamIdentifier=|flags=" <<<"$SIGN_INFO" || true
+          grep -qE "Authority=Developer ID Application" <<<"$SIGN_INFO" || { echo "::error::not Developer-ID signed"; exit 1; }
+          grep -qE "Timestamp=" <<<"$SIGN_INFO" || { echo "::error::signature has no secure timestamp"; exit 1; }
 
       - name: Package (zip + DMG)
         env:
@@ -112,7 +125,7 @@ jobs:
         run: |
           echo "$ASC_API_KEY_P8" | base64 --decode > "$RUNNER_TEMP/asc_key.p8"
           for artifact in "build/dist/QuickReminder-$VERSION.zip" "build/dist/QuickReminder-$VERSION.dmg"; do
-            xcrun notarytool submit "$artifact" --key "$RUNNER_TEMP/asc_key.p8" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait
+            xcrun notarytool submit "$artifact" --key "$RUNNER_TEMP/asc_key.p8" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait --timeout 20m
           done
           rm -f "$RUNNER_TEMP/asc_key.p8"
           xcrun stapler staple build/QuickReminder.app
@@ -123,28 +136,44 @@ jobs:
           (cd build/dist && shasum -a 256 *.zip *.dmg > SHA256SUMS.txt && cat SHA256SUMS.txt)
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: QuickReminder-${{ steps.version.outputs.version }}
           path: build/dist/*
 
-      - name: Release notes from CHANGELOG
+      # Scripts/release.sh publishes first and pushes the tag afterwards; never overwrite its
+      # artefacts, notes or pre-release flag. Only a hand-pushed tag gets a release from here.
+      - name: Check for an existing release
+        id: existing
         if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Release v$VERSION already exists (published by Scripts/release.sh) — verification build only."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Release notes from CHANGELOG
+        if: startsWith(github.ref, 'refs/tags/v') && steps.existing.outputs.skip == 'false'
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
+          NOTES="$(awk -v v="$VERSION" '$0 ~ /^## / {p = ($0 == "## " v)} p' CHANGELOG.md | tail -n +2)"
+          [[ -n "$(tr -d '[:space:]' <<<"$NOTES")" ]] || { echo "::error::CHANGELOG.md has no '## $VERSION' section"; exit 1; }
           {
-            awk -v v="## $VERSION" '$0 ~ "^## " {p = ($0 ~ v)} p' CHANGELOG.md | tail -n +2
-            echo
+            printf '%s\n\n' "$NOTES"
             echo "Signed with Developer ID and notarized by Apple. Requires macOS 26."
             echo
             echo '```'; cat build/dist/SHA256SUMS.txt; echo '```'
           } > build/dist/RELEASE_NOTES.md
-          grep -q . build/dist/RELEASE_NOTES.md
 
       - name: Create GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/v') && steps.existing.outputs.skip == 'false'
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           name: QuickReminder ${{ steps.version.outputs.version }}
           body_path: build/dist/RELEASE_NOTES.md

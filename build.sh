@@ -143,7 +143,10 @@ trap 'rm -f "$SIGN_LOG"' EXIT
 # bundle whose signature or runtime flag did not stick.
 # Developer ID builds get a secure timestamp (required for notarization); ad-hoc/dev builds don't need one.
 SIGN_FLAGS=(--force --sign "$SIGN_ID" --options runtime)
-SIGN_NAME="$(security find-identity -v -p codesigning 2>/dev/null | grep -F "$SIGN_ID" | head -1 || true)"
+SIGN_NAME=""
+if [[ "$SIGN_ID" != "-" ]]; then
+    SIGN_NAME="$(security find-identity -v -p codesigning 2>/dev/null | grep -F ") $SIGN_ID " | head -1 || true)"
+fi
 if [[ "$SIGN_NAME" == *"Developer ID Application"* || "${CODESIGN_TIMESTAMP:-0}" == "1" ]]; then
     SIGN_FLAGS+=(--timestamp)
 fi

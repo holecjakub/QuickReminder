@@ -60,7 +60,7 @@ macOS 26 Tahoe, Apple silicon. Works on displays without a notch too (a virtual 
 Releases are tagged `vX.Y.Z` and published on GitHub with a notarized `.dmg` and `.zip`.
 
 - **From this Mac:** `Scripts/release.sh 1.0.0` builds Release, signs with the Developer ID certificate in the keychain (timestamped, hardened runtime), packages, notarizes and staples both artifacts, tags, and creates the GitHub release with notes from `CHANGELOG.md`. `--dry-run` stops before tagging; `--pre` marks a pre-release. Notarization credentials come from `~/.config/quickreminder/notary.env` (written by `Scripts/setup-release-secrets.sh`).
-- **From GitHub Actions:** pushing a `v*` tag runs `.github/workflows/release.yml`, which does the same on a `macos-26` runner using the repository secrets set by `Scripts/setup-release-secrets.sh`. `ci.yml` builds and runs the checks on every PR.
+- **From GitHub Actions:** pushing a `v*` tag runs `.github/workflows/release.yml` on a `macos-26` runner with the secrets from the `release` environment (set by `Scripts/setup-release-secrets.sh`). `Scripts/release.sh` is the canonical publisher; the workflow is an independent verification build and creates a release only when no release exists for the tag yet (a hand-pushed tag). `ci.yml` builds and runs the checks on every PR.
 
 ## License
 
