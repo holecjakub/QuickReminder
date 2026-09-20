@@ -72,7 +72,9 @@ fi
 log "Building $APP_NAME $VERSION (Release, Developer ID $SIGN_ID)"
 VERSION="$VERSION" CONFIGURATION=Release ./build.sh
 codesign --verify --deep --strict --verbose=2 "$APP"
-codesign -dv "$APP" 2>&1 | grep -E "Authority=Developer ID|Timestamp=" || { echo "error: bundle is not Developer-ID signed with a timestamp" >&2; exit 1; }
+SIGN_INFO="$(codesign -dv --verbose=4 "$APP" 2>&1)"
+grep -qE "Authority=Developer ID Application" <<<"$SIGN_INFO" || { echo "error: bundle is not Developer-ID signed" >&2; echo "$SIGN_INFO" >&2; exit 1; }
+grep -qE "Timestamp=" <<<"$SIGN_INFO" || { echo "error: signature has no secure timestamp" >&2; exit 1; }
 
 # --- Package ---------------------------------------------------------------------------------
 log "Packaging"

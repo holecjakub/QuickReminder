@@ -88,7 +88,8 @@ jobs:
           ./build.sh
           codesign --verify --deep --strict --verbose=2 build/QuickReminder.app
           codesign -dv --verbose=4 build/QuickReminder.app 2>&1 | grep -E "Authority=|Identifier=|TeamIdentifier=|flags=" || true
-          codesign -dv build/QuickReminder.app 2>&1 | grep -E "Authority=Developer ID" || { echo "::error::not Developer-ID signed (see the codesign output above)"; exit 1; }
+          # Authority lines need --verbose=4 on current codesign.
+          codesign -dv --verbose=4 build/QuickReminder.app 2>&1 | grep -qE "Authority=Developer ID Application" || { echo "::error::not Developer-ID signed (see the codesign output above)"; exit 1; }
 
       - name: Package (zip + DMG)
         env:
