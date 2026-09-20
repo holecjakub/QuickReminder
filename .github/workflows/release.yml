@@ -65,8 +65,12 @@ jobs:
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security set-keychain-settings -lut 21600 build.keychain
           security import "$RUNNER_TEMP/certificate.p12" -k build.keychain -P "$MACOS_CERTIFICATE_PWD" -T /usr/bin/codesign
+          # The Developer ID intermediate CA is not in a fresh runner keychain; without it codesign
+          # cannot complete the chain and the signature carries "Authority=(unavailable)".
+          curl -sSfL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$RUNNER_TEMP/DeveloperIDG2CA.cer"
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k build.keychain -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
-          rm -f "$RUNNER_TEMP/certificate.p12"
+          rm -f "$RUNNER_TEMP/certificate.p12" "$RUNNER_TEMP/DeveloperIDG2CA.cer"
           SIGN_ID="$(security find-identity -v -p codesigning build.keychain | awk '/Developer ID Application/ {print $2; exit}')"
           [[ -n "$SIGN_ID" ]] || { echo "::error::no Developer ID Application identity imported"; exit 1; }
           echo "SIGN_ID=$SIGN_ID" >> "$GITHUB_ENV"
