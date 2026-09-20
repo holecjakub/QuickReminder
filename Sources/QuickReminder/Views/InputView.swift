@@ -4,33 +4,34 @@ import SwiftUI
 struct InputView: View {
     @Binding var title: String
     @Binding var notes: String
-    @FocusState.Binding var titleFocused: Bool
     let onSubmit: () -> Void
     /// Return true to consume Tab (used to accept a date suggestion).
     var onTab: () -> Bool = { false }
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            DashedCircleView()
+            DashedCircleView(size: Theme.s(21))
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 1) {
                 PlaceholderTextField(
                     placeholder: "New Reminder",
                     text: $title,
-                    font: .system(size: 19, weight: .regular),
+                    pointSize: Theme.s(19),
                     placeholderColor: Theme.placeholder,
-                    onSubmit: onSubmit
+                    identifier: "title",
+                    onSubmit: onSubmit,
+                    onTab: onTab
                 )
-                .focused($titleFocused)
-                .onKeyPress(.tab) { onTab() ? .handled : .ignored }
 
                 PlaceholderTextField(
                     placeholder: "Notes",
                     text: $notes,
-                    font: .system(size: 15, weight: .regular),
+                    pointSize: Theme.s(15),
                     placeholderColor: Theme.placeholderSecondary,
-                    onSubmit: onSubmit
+                    identifier: "notes",
+                    onSubmit: onSubmit,
+                    maxLength: 10_000
                 )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -38,29 +39,38 @@ struct InputView: View {
     }
 }
 
-/// Plain text field with a custom-coloured placeholder (SwiftUI's default placeholder tint is not controllable).
+/// One text row: a fixed-height `PlainTextView` with a SwiftUI placeholder drawn over it while
+/// empty (opacity only, so the row never changes size).
 struct PlaceholderTextField: View {
     let placeholder: String
     @Binding var text: String
-    let font: Font
+    let pointSize: CGFloat
     let placeholderColor: Color
+    let identifier: String
     let onSubmit: () -> Void
+    var onTab: () -> Bool = { false }
+    var maxLength: Int = 2_000
+    @Environment(\.listAccent) private var accent
 
     var body: some View {
         ZStack(alignment: .leading) {
-            if text.isEmpty {
-                Text(placeholder)
-                    .font(font)
-                    .foregroundStyle(placeholderColor)
-                    .allowsHitTesting(false)
-            }
-            TextField("", text: $text)
-                .font(font)
-                .foregroundStyle(.white)
-                .tint(Theme.accent)
-                .textFieldStyle(.plain)
-                .onSubmit(onSubmit)
+            PlainTextView(
+                text: $text,
+                pointSize: pointSize,
+                accent: accent,
+                identifier: identifier,
+                placeholder: placeholder,
+                onSubmit: onSubmit,
+                onTab: onTab,
+                maxLength: maxLength
+            )
+            Text(placeholder)
+                .font(.system(size: pointSize, weight: .regular))
+                .foregroundStyle(placeholderColor)
+                .opacity(text.isEmpty ? 1 : 0)
+                .allowsHitTesting(false)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: PlainTextView.lineHeight(for: pointSize) + 2)
     }
 }

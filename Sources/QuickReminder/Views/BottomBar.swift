@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Bottom row: outlined pill with date / location / flag on the left, round ✓ save button on the right.
@@ -12,6 +13,7 @@ struct BottomBar: View {
     @Binding var showCustomDatePicker: Bool
     let saveNamespace: Namespace.ID
     let saveButtonYielded: Bool
+    @Environment(\.listAccent) private var accent
 
     private let iconSize: CGFloat = 22
     private let hitSize: CGFloat = 38
@@ -32,8 +34,8 @@ struct BottomBar: View {
             locationButton
             flagButton
         }
-        .padding(.horizontal, 11)
-        .frame(height: 44)
+        .padding(.horizontal, Theme.s(11))
+        .frame(height: Theme.s(44))
         .background(
             Capsule()
                 .fill(Theme.pillFill)
@@ -41,44 +43,65 @@ struct BottomBar: View {
         )
     }
 
-    private func icon(_ name: String, active: Bool, activeColor: Color = Theme.accent, size: CGFloat? = nil) -> some View {
-        Image(systemName: name)
-            .font(.system(size: size ?? iconSize, weight: .regular))
-            .symbolRenderingMode(.monochrome)
-            .foregroundStyle(active ? activeColor : .white)
-            .frame(width: hitSize, height: hitSize)
-            .contentShape(Rectangle())
+    /// Pill glyphs are rendered through AppKit's symbol configuration rather than SwiftUI's
+    /// `Image(systemName:)`: at one point size AppKit draws the three symbols optically balanced
+    /// (measured at 22 pt: calendar.badge.clock 25.5 × 21.5, location 21 × 20, flag 20.5 × 20.5),
+    /// whereas the SwiftUI symbol image draws the badge symbol markedly smaller. Template images
+    /// take the foreground style, so active colours keep working.
+    /// Only the badge symbol needs the AppKit path; `flag` / `location` stay SwiftUI symbols so
+    /// `.contentTransition(.symbolEffect(.replace))` keeps animating their fill toggle.
+    @ViewBuilder
+    private func icon(_ name: String, active: Bool, activeColor: Color? = nil) -> some View {
+        Group {
+            if name.contains(".badge.") {
+                Image(nsImage: Self.symbolImage(name, pointSize: Theme.s(iconSize)))
+                    .renderingMode(.template)
+            } else {
+                Image(systemName: name)
+                    .font(.system(size: Theme.s(iconSize), weight: .regular))
+                    .symbolRenderingMode(.monochrome)
+            }
+        }
+        .foregroundStyle(active ? (activeColor ?? accent) : .white)
+        .frame(width: Theme.s(hitSize), height: Theme.s(hitSize))
+        .contentShape(Rectangle())
     }
 
+    /// Cached per name + size: a fresh NSImage per body would re-rasterise on every render
+    /// (~160 µs each), and a stable object lets `Image(nsImage:)` skip the redraw entirely.
+    @MainActor private static var symbolCache: [String: NSImage] = [:]
+
+    @MainActor private static func symbolImage(_ name: String, pointSize: CGFloat) -> NSImage {
+        let key = "\(name)@\(pointSize)"
+        if let cached = symbolCache[key] { return cached }
+        let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config) ?? NSImage()
+        image.isTemplate = true
+        symbolCache[key] = image
+        return image
+    }
+
+    @State private var dateMenuPresenter = PopUpMenu()
+
     private var dateMenu: some View {
-        Menu {
-            Button { dueDate = nil } label: {
-                Label("None", systemImage: "calendar.badge.minus")
-            }
-            Divider()
-            Button {
-                flagged = true
-                dueDate = Date().addingTimeInterval(60 * 60)
-            } label: {
-                Label("Mark as Urgent", systemImage: "alarm")
-            }
-            Button { dueDate = Date().addingTimeInterval(60 * 60) } label: {
-                Label("Remind Me In 1 Hour", systemImage: "clock")
-            }
-            Button { dueDate = tomorrowAt9AM() } label: {
-                Label("Remind Me Tomorrow", systemImage: "calendar")
-            }
-            Divider()
-            Button { showCustomDatePicker = true } label: {
-                Label("Remind Me Later…", systemImage: "calendar")
-            }
+        Button {
+            dateMenuPresenter.show([
+                .action("None", systemImage: "calendar.badge.minus") { dueDate = nil },
+                .separator,
+                .action("Mark as Urgent", systemImage: "alarm") {
+                    flagged = true
+                    dueDate = Date().addingTimeInterval(60 * 60)
+                },
+                .action("Remind Me In 1 Hour", systemImage: "clock") { dueDate = Date().addingTimeInterval(60 * 60) },
+                .action("Remind Me Tomorrow", systemImage: "calendar") { dueDate = tomorrowAt9AM() },
+                .separator,
+                .action("Remind Me Later…", systemImage: "calendar") { showCustomDatePicker = true },
+            ], belowPanelAt: NSEvent.mouseLocation.x - 12)
         } label: {
-            icon("calendar.badge.clock", active: dueDate != nil, size: iconSize + 2)
+            icon("calendar.badge.clock", active: dueDate != nil)
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .hoverScale()
+        .buttonStyle(HoverHighlightButtonStyle())
         .accessibilityLabel("Add date")
         .popover(isPresented: $showCustomDatePicker, arrowEdge: .bottom) {
             DatePickerPopover(selectedDate: $dueDate, isPresented: $showCustomDatePicker)
@@ -90,7 +113,7 @@ struct BottomBar: View {
             icon(locationText.isEmpty ? "location" : "location.fill", active: !locationText.isEmpty)
                 .contentTransition(.symbolEffect(.replace))
         }
-        .buttonStyle(HoverButtonStyle())
+        .buttonStyle(HoverHighlightButtonStyle())
         .accessibilityLabel("Add location")
         .popover(isPresented: $showLocationField, arrowEdge: .bottom) {
             locationPopover
@@ -104,7 +127,7 @@ struct BottomBar: View {
             icon(flagged ? "flag.fill" : "flag", active: flagged, activeColor: Theme.flagOrange)
                 .contentTransition(.symbolEffect(.replace))
         }
-        .buttonStyle(HoverButtonStyle())
+        .buttonStyle(HoverHighlightButtonStyle())
         .accessibilityLabel("Toggle flag")
     }
 
@@ -114,17 +137,17 @@ struct BottomBar: View {
         Group {
             if saveButtonYielded {
                 // The badge in NotchContainerView owns the geometry now; keep the slot.
-                Color.clear.frame(width: 48, height: 48)
+                Color.clear.frame(width: Theme.s(48), height: Theme.s(48))
             } else {
                 Button(action: handleSave) {
                     ZStack {
                         Circle()
-                            .fill(canSave ? Theme.accent : Theme.grayCircleDisabled)
+                            .fill(canSave ? accent : Theme.grayCircleDisabled)
                         Image(systemName: "checkmark")
-                            .font(.system(size: 22, weight: .semibold))
+                            .font(.system(size: Theme.s(22), weight: .semibold))
                             .foregroundStyle(.white)
                     }
-                    .frame(width: 48, height: 48)
+                    .frame(width: Theme.s(48), height: Theme.s(48))
                     .contentShape(Circle())
                 }
                 .buttonStyle(HoverButtonStyle())

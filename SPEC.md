@@ -12,13 +12,14 @@ Notch research (boring.notch, NotchDrop, DynamicNotchKit): `reference/notch-rese
 | Action | Result |
 |--------|--------|
 | Global hotkey (default `⇧⌘R`, configurable) | Notch expands into the panel, title field takes the keyboard. The frontmost app stays active (no app switch, no menu bar change). |
+| Pointer over the physical notch | After a 90 ms dwell (a pointer merely crossing the notch does nothing) the closed silhouette swells by 22 × 5 pt with a lively spring (`response 0.32, damping 0.55`) and the trackpad taps once (`NSHapticFeedbackManager` `.levelChange`); settles back when the pointer leaves. Arming is decided from the pointer position when the notch parks: still on it → wait for it to leave first. Reduce Motion: no swell, haptic only. While parked the window is excluded from screenshots and screen sharing (`sharingType = .none`; `QR_CAPTURE_PARKED=1` for dev captures). |
 | Click on the physical notch | Same as the hotkey |
 | `open quickreminder://show` / `hide` / `toggle` | Same actions for Shortcuts, Raycast, scripts (`quickreminder:///show` also accepted) |
 | Hotkey again, `Esc` (also while typing), click outside the black shape, ⓧ | Collapse without saving; in-progress text discarded |
 | Type in “New Reminder” | Save button turns blue |
 | Title contains a date/time phrase (EN or CZ: “tomorrow at 2pm”, “zítra ve 14:00”, “v pátek”, “12. března”, “in 2 hours”, “za 30 minut”) | Blue suggestion chip below the input (“Tomorrow, 2:00 PM ⇥”). `Tab` or click applies it (due date set, phrase removed from title); ⓧ dismisses it for that phrase; an un-dismissed suggestion is applied automatically on save, like iOS Reminders. `NaturalDateParser` picks the right-most phrase; day-only phrases default to 9:00. |
 | “Notes” line | Optional notes |
-| “Reminders ▾” | Popover with all reminder lists; selection persists |
+| “Reminders ▾” | Popover with all reminder lists; selection persists. The list's colour becomes the panel accent: header, chevron, ✓, date chips, caret, active icons and the saved badge (iOS blue when EventKit has no colour). |
 | Calendar icon | Menu: None · Mark as Urgent · Remind Me In 1 Hour · Remind Me Tomorrow · Remind Me Later… (date picker). A blue date chip appears above the bottom bar. |
 | Location icon | Popover with a location text; stored in Notes as `📍 …` (icon becomes `location.fill`) |
 | Flag icon | Toggles flagged (orange `flag.fill`); stored as **High priority** (EventKit exposes no flag) |
@@ -57,7 +58,7 @@ Sources/QuickReminder/
 │   ├── HotkeyManager.swift         Carbon RegisterEventHotKey (no Accessibility permission) + HotkeyRecorderView
 │   └── Preferences.swift
 └── Settings/SettingsView.swift
-Tests/QuickReminderTests.swift      assertion runner (Scripts/test.sh)
+Tests/QuickReminderCoreTests/       Swift Testing suite (swift test / Scripts/test.sh)
 ```
 
 Dependencies: AppKit, SwiftUI, EventKit, Carbon. No packages.
@@ -78,7 +79,7 @@ Dependencies: AppKit, SwiftUI, EventKit, Carbon. No packages.
 | Close animation | `spring(response 0.30, damping 0.92)`; content `easeOut 0.12`; window ordered out after 0.36 s | — |
 | Saved choreography | shape → `closedSize + 2×72 pt` wide at notch height with `spring(0.45, 0.82)`; ✓ badge 24 pt lands in the right extension via `matchedGeometryEffect`; tick trims in over 0.28 s after 0.32 s, bounce 1.18× at 0.55 s; hold 1.0 s, then `hide()` | Dynamic Island “done” states |
 | No-notch display | virtual pill 200 pt × menu-bar height at top centre | NotchDrop fallback |
-| Window | `.borderless, .nonactivatingPanel`, `.screenSaver`, `[.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]`, `hasShadow = false`, `canBecomeKey = true` | boring.notch |
+| Window | `.borderless, .nonactivatingPanel`, `.screenSaver`, `[.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]`, `hasShadow = false`, `canBecomeKey = true`. On a notched display it stays ordered in permanently: closed = a small window hugging the notch (hover size + 16 × 8 pt margin, so it only intercepts clicks on the notch itself, and SwiftUI `onHover`/tap on the silhouette give hover and click without system-wide mouse polling); open = the full 648 × 238 pt canvas. Displays without a notch keep the order-out behaviour. | boring.notch |
 | Dismissal | global monitor (clicks outside the app) + local monitor (Esc, clicks inside the window but outside the silhouette) | — |
 
 ---
@@ -94,11 +95,12 @@ Dependencies: AppKit, SwiftUI, EventKit, Carbon. No packages.
 | Dotted circle | 21 pt, 1.5 pt stroke, #59595D, round dots |
 | Title | 19 pt regular, white; placeholder #59595D |
 | Notes | 15 pt regular; placeholder #59595D |
-| Pill | 44 pt tall capsule, fill white 3 %, 1 pt stroke #3D3D3F; icons `calendar.badge.clock` 24 pt, `location` 22 pt, `flag` 22 pt, 38 pt hit areas, 55 pt centre spacing |
+| Pill | 44 pt tall capsule, fill white 3 %, 1 pt stroke #3D3D3F; icons `calendar.badge.clock`, `location`, `flag` rendered through AppKit's `NSImage.SymbolConfiguration` at 22 pt (optically balanced: 26 × 21.5 / 21 × 20 / 19 × 21 pt visible — SwiftUI's `Image(systemName:)` draws the badge symbol markedly smaller), 38 pt hit areas, 55 pt centre spacing |
 | Save ✓ | 48 pt circle, #474749 disabled / #0A84FF enabled, `checkmark` 22 pt semibold |
 | Active states | date → blue icon + chip; location → `location.fill` blue; flag → `flag.fill` orange (1.0, 0.62, 0.04) |
-| Pointer | hand cursor, 1.06× hover, 0.94× press on every control |
-| Vertical rhythm | notch band 38 → 8 → header → 10 → input → ≥ 14 → bottom bar → 22 bottom |
+| Pointer | hand cursor. Pill icons (calendar, location, flag): macOS HIG hover feedback, a circular highlight (white 10 %, 18 % pressed, 0.12 s fade), no scaling so the row never shifts. Round controls (ⓧ, ✓, header, chips): 1.06× hover / 0.94× press spring, hit-tested on the layout frame. The date options open as a native `NSMenu` from a plain button (a SwiftUI `Menu` with the borderless style brought its own AppKit hover chrome and resized on hover). |
+| Vertical rhythm | notch band 38 → 8 → header → 10 → input → flexible → fixed 26 pt slot for the date chip / suggestion / error → 8 → bottom bar → 22 bottom. The slot is always reserved, so the bar never moves when a chip appears. |
+| Text size | Every font and control metric is multiplied by `NotchLayout.textScale` = system body size ÷ 13 (System Settings → Accessibility → Display → Text size, incl. per-app), clamped 0.85–1.6; the open panel height scales with it (`38 + 176 × scale`), width up to 1.3×. Display scaling (Displays → resolution) needs nothing: all geometry is in points and the notch is read live from `NSScreen`. `QR_TEXT_SCALE=1.3` forces a scale for layout checks. |
 
 ---
 
@@ -114,8 +116,8 @@ Dependencies: AppKit, SwiftUI, EventKit, Carbon. No packages.
 
 ## 6. Build & test
 
-- `./build.sh` / `./build.sh run` — direct `swiftc` build (Release: `-O -wmo -dead_strip`; `CONFIGURATION=Debug` for `-Onone -g`) + hand-assembled bundle (works without accepting the Xcode license); `xcodegen generate` keeps the `.xcodeproj` in sync.
-- `Scripts/test.sh` — compiles sources + `Tests/` into a runner: NotchShape geometry, NotchGeometry, NotchLayout, Shortcut encoding.
+- `./build.sh` / `./build.sh run` — direct `swiftc` build (Release: `-O -wmo -dead_strip`; `CONFIGURATION=Debug` for `-Onone -g`) + hand-assembled bundle (works without accepting the Xcode license); `xcodegen generate` keeps the `.xcodeproj` in sync. Unaffected by the SwiftPM package below (it still compiles `Sources/` directly with `swiftc`).
+- `swift test` / `Scripts/test.sh` — Swift Testing suite in `Tests/QuickReminderCoreTests`, run against the `QuickReminderCore` SwiftPM library target (`Package.swift`) that wraps `Sources/QuickReminder` (minus the `@main` app file): NotchShape/NotchGeometry geometry and hit-testing, NotchState size precedence, NaturalDateParser (~240 cases), HotkeyManager.Shortcut, SuggestionDateFormatter. `Scripts/test.sh` passes extra arguments through (e.g. `--filter`) and prints a one-line summary.
 - `Scripts/shot.sh <name> [-R x,y,w,h | --full]` — screenshots into `build/shots/` (override with `QR_SHOT_DIR`).
 
 ---

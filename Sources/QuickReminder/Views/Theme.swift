@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Colours sampled from the iOS 26 quick-reminder overlay (see SPEC.md §4).
 enum Theme {
-    /// iOS systemBlue in dark mode.
+    /// iOS systemBlue in dark mode — the fallback accent when the list has no colour.
     static let accent = Color(red: 0x0A / 255, green: 0x84 / 255, blue: 0xFF / 255)
     /// Placeholder text ("New Reminder").
     static let placeholder = Color(red: 0x59 / 255, green: 0x59 / 255, blue: 0x5D / 255)
@@ -20,4 +20,20 @@ enum Theme {
     static let flagOrange = Color(red: 1.0, green: 0.62, blue: 0.04)
 
     static let horizontalPadding: CGFloat = 20
+
+    /// Scales a design metric by the user's text size (see `NotchLayout.textScale`).
+    @MainActor static func s(_ value: CGFloat) -> CGFloat { (value * NotchLayout.cachedTextScale).rounded(.toNearestOrEven) }
+}
+
+/// The selected reminder list's colour, used for the header, chevron, save button, chips, caret
+/// and the saved badge — exactly like the iOS overlay takes the list's colour.
+private struct ListAccentKey: EnvironmentKey {
+    static let defaultValue: Color = Theme.accent
+}
+
+extension EnvironmentValues {
+    var listAccent: Color {
+        get { self[ListAccentKey.self] }
+        set { self[ListAccentKey.self] = newValue }
+    }
 }

@@ -18,6 +18,11 @@ final class NotchState: ObservableObject {
     /// The saved badge exists (and the save button yields its geometry) from the moment of
     /// saving until the window is ordered out, so the badge never flies back to the button.
     @Published var savedBadgeShown: Bool = false
+    /// Pointer is over the (closed) notch: the silhouette swells slightly to acknowledge it.
+    @Published var isHovering: Bool = false
+    /// Size of the hosting canvas (= window). Small around the closed notch so the window only
+    /// intercepts clicks on the notch itself; the full canvas while the panel is open.
+    @Published var canvasSize: CGSize = NotchLayout.canvasSize
 
     /// Size of the collapsed silhouette. Slightly larger than the physical notch so
     /// anti-aliased edges never peek out around the bezel.
@@ -30,7 +35,19 @@ final class NotchState: ObservableObject {
 
     var currentSize: CGSize {
         if isSaving { return savedSize }
-        return isOpen ? openSize : closedSize
+        if isOpen { return openSize }
+        if isHovering { return hoverSize }
+        return closedSize
+    }
+
+    /// Closed silhouette, swollen by `NotchLayout.hoverGrowth` while the pointer is over it.
+    var hoverSize: CGSize {
+        CGSize(width: closedSize.width + NotchLayout.hoverGrowth.width, height: closedSize.height + NotchLayout.hoverGrowth.height)
+    }
+
+    /// Window/canvas size while closed: the hover-swollen silhouette plus a small margin.
+    var closedCanvasSize: CGSize {
+        CGSize(width: hoverSize.width + NotchLayout.closedCanvasMargin.width, height: hoverSize.height + NotchLayout.closedCanvasMargin.height)
     }
 
     /// Notch height, widened by `NotchLayout.savedExtension` on each side.
@@ -41,12 +58,41 @@ final class NotchState: ObservableObject {
 
 /// Layout constants for the expanded quick-reminder panel.
 enum NotchLayout {
-    static let openSize = CGSize(width: 600, height: 214)
+    /// Base (100 % text size) open panel size.
+    static let baseOpenSize = CGSize(width: 600, height: 214)
+    /// Open panel size at the user's text size: the content area below the 38 pt notch band
+    /// scales with the text; width grows a little too so long titles keep their room.
+    @MainActor static var openSize: CGSize {
+        let s = textScale
+        // 38 pt notch band + 54 pt of fixed vertical rhythm (8 + 10 + 14 + 22) + 122 pt of content that scales.
+        let fixed: CGFloat = 38 + 54
+        return CGSize(width: (baseOpenSize.width * min(1 + (s - 1) * 0.5, 1.3)).rounded(),
+                      height: (fixed + (baseOpenSize.height - fixed) * s).rounded())
+    }
+    /// System text size (System Settings → Accessibility → Display → Text size, or per-app),
+    /// relative to the default 13 pt body. Read live so every open reflects the current setting.
+    @MainActor static var textScale: CGFloat {
+        if let forcedScale { return forcedScale }
+        let body = NSFont.preferredFont(forTextStyle: .body).pointSize
+        return max(0.85, min(body / 13, 1.6))
+    }
+    /// `QR_TEXT_SCALE` dev override, read once (the environment cannot change while running).
+    private static let forcedScale: CGFloat? = ProcessInfo.processInfo.environment["QR_TEXT_SCALE"]
+        .flatMap(Double.init).map { max(0.85, min(CGFloat($0), 1.6)) }
+
+    /// `textScale` as sampled by the controller on every show / screen change; views read this
+    /// (via `Theme.s`) so a body evaluation costs nothing, while every open still reflects the
+    /// current system setting.
+    @MainActor static var cachedTextScale: CGFloat = 1
+
+    @MainActor static func refreshTextScale() {
+        cachedTextScale = textScale
+    }
     /// Extra room around the open panel so the bouncy spring's ~2 % overshoot is not clipped
     /// by the window edge (notch-research.md: "a bouncy spring overshoots the mask").
     static let overshootPadding: CGFloat = 24
     /// Window / container size: open panel plus overshoot room on the sides and bottom.
-    static var canvasSize: CGSize {
+    @MainActor static var canvasSize: CGSize {
         CGSize(width: openSize.width + 2 * overshootPadding, height: openSize.height + overshootPadding)
     }
     static let closedTopRadius: CGFloat = NotchShape.Radius.closedTop
@@ -62,6 +108,16 @@ enum NotchLayout {
     static let savingAnimation: Animation = .spring(response: 0.45, dampingFraction: 0.82, blendDuration: 0)
     /// How long the saved pill stays before the notch returns to normal.
     static let savedHold: TimeInterval = 1.0
+
+    /// How much the closed notch grows on hover (total, both sides / bottom).
+    static let hoverGrowth = CGSize(width: 22, height: 5)
+    /// Hover in: a lively little spring; hover out: a calmer one.
+    static let hoverInAnimation: Animation = .spring(response: 0.32, dampingFraction: 0.55, blendDuration: 0)
+    static let hoverOutAnimation: Animation = .spring(response: 0.30, dampingFraction: 0.85, blendDuration: 0)
+    /// Pointer must rest on the notch this long before the swell + haptic fire.
+    static let hoverDwell: TimeInterval = 0.09
+    /// Margin around the swollen closed notch kept inside the small closed window.
+    static let closedCanvasMargin = CGSize(width: 16, height: 8)
 
     /// Spring used when the panel expands out of the notch.
     static let openAnimation: Animation = .spring(response: 0.42, dampingFraction: 0.78, blendDuration: 0)
