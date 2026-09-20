@@ -21,7 +21,9 @@ jobs:
     timeout-minutes: 20
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@1242409711ff5721add51979e9e11e23ebb7e5a4 # v1
@@ -48,7 +50,7 @@ jobs:
           ls -la build/QuickReminder.app/Contents/MacOS build/QuickReminder.app/Contents/Resources
 
       - name: Upload unsigned build
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: QuickReminder-unsigned-${{ github.sha }}
           path: build/QuickReminder.app
