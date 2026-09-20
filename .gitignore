@@ -27,3 +27,11 @@ Package.resolved
 
 # Local-only review reports
 PRs/
+
+# Design references stay local (never commit third-party screenshots)
+reference/*.png
+reference/*.jpg
+reference/*.jpeg
+reference/*.heic
+reference/*.mov
+reference/*.mp4
