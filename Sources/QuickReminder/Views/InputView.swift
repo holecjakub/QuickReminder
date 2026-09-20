@@ -59,6 +59,7 @@ struct PlaceholderTextField: View {
                 pointSize: pointSize,
                 accent: accent,
                 identifier: identifier,
+                placeholder: placeholder,
                 onSubmit: onSubmit,
                 onTab: onTab,
                 maxLength: maxLength

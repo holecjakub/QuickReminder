@@ -16,6 +16,14 @@ final class PopUpMenu: NSObject {
     /// Presents the menu just below the panel (the panel window sits above the menu's window
     /// level, so a menu popped at the pointer would be partly hidden behind it).
     func show(_ items: [Item], belowPanelAt x: CGFloat? = nil) {
+        let menu = makeMenu(items)
+        // The tracking loop swallows the hover exit; drop the hand cursor before it starts.
+        HoverMotion.updateCursor(hovering: false)
+        show(menu, belowPanelAt: x)
+    }
+
+    /// Builds the menu (separately testable): items get tags in order, separators none.
+    func makeMenu(_ items: [Item]) -> NSMenu {
         let menu = NSMenu()
         actions = []
         for item in items {
@@ -33,6 +41,10 @@ final class PopUpMenu: NSObject {
                 menu.addItem(menuItem)
             }
         }
+        return menu
+    }
+
+    func show(_ menu: NSMenu, belowPanelAt x: CGFloat?) {
         // Screen coordinates (Cocoa, bottom-left origin) — `in: nil` pops relative to the screen.
         var point = NSEvent.mouseLocation
         if let x, let window = NSApp.windows.first(where: { $0 is NotchWindow }) {

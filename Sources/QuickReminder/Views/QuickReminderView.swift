@@ -61,6 +61,8 @@ struct QuickReminderView: View {
                 if let saveErrorText {
                     Text(saveErrorText)
                         .font(.system(size: Theme.s(12), weight: .medium))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                         .foregroundStyle(Color(red: 1.0, green: 0.27, blue: 0.23))
                         .padding(.leading, Theme.s(21) + 10)
                         .transition(.opacity)

@@ -55,16 +55,24 @@ final class RemindersService: ObservableObject {
 
     func loadCalendars() {
         let fresh = store.calendars(for: .reminder)
-        // Avoid re-rendering the whole panel when nothing changed.
-        if fresh.map(\.calendarIdentifier) != calendars.map(\.calendarIdentifier)
-            || fresh.map(\.title) != calendars.map(\.title) {
+        // Avoid re-rendering the whole panel when nothing changed (ids, titles or colours).
+        let signature = { (cals: [EKCalendar]) in cals.map { "\($0.calendarIdentifier)|\($0.title)|\($0.cgColor.map { "\($0.components ?? [])" } ?? "-")" } }
+        if signature(fresh) != signature(calendars) {
             calendars = fresh
         }
+        let defaultColor = store.defaultCalendarForNewReminders()?.cgColor.map { Color(cgColor: $0) }
+        if defaultColor != defaultListColor { defaultListColor = defaultColor }
     }
 
-    /// The list's colour as a SwiftUI colour, or nil when EventKit provides none.
+    /// Colour of the default list, resolved in `loadCalendars()` so SwiftUI bodies never call
+    /// `defaultCalendarForNewReminders()` (an XPC round trip) themselves.
+    @Published private(set) var defaultListColor: Color?
+
+    /// The list's colour as a SwiftUI colour: the stored id's list, or the default list when no
+    /// id is stored; nil (→ the iOS blue) when the id is stale or EventKit provides no colour.
     func color(for id: String?) -> Color? {
-        guard let cal = calendar(for: id), let cg = cal.cgColor else { return nil }
+        guard let id else { return defaultListColor }
+        guard let cal = calendars.first(where: { $0.calendarIdentifier == id }), let cg = cal.cgColor else { return nil }
         return Color(cgColor: cg)
     }
 
