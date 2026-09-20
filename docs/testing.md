@@ -63,7 +63,7 @@ Scenarios: `hotkey_open_close`, `type_suggestion_tab`, `czech_suggestion`,
   hint if it's missing.
 - The built-in display's exact geometry is baked into the coordinates (this
   machine: 1800×1169 pt, notch centred at x≈901, open panel at x 601–1201 /
-  y 0–214). If `system_profiler SPDisplaysDataType` shows no built-in Retina
+  y 0–240). If `system_profiler SPDisplaysDataType` shows no built-in Retina
   display, the hover/click-on-notch scenarios (`click_notch_opens`,
   `hover_swell`, `quick_crossing_no_swell`) are reported `SKIP` rather than
   failing outright; the rest still run against the virtual notch pill.
@@ -118,7 +118,7 @@ one of these directly.
   with the installed app, so a changed hotkey makes the hotkey scenarios fail (safely).
 - `--with-save` creates a real reminder titled "E2E test reminder" in your default list and
   does not delete it.
-- Screenshots under `build/e2e/<timestamp>/` cover a 600 × 214 pt strip at the top centre of
+- Screenshots under `build/e2e/<timestamp>/` cover a 600 × 240 pt strip at the top centre of
   the built-in display and may contain whatever sits there (menu bar, tab titles). The
   folder is gitignored; clear it before attaching logs to a bug report. `screencapture`
   needs Screen Recording permission for your terminal.

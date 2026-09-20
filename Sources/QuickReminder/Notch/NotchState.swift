@@ -58,16 +58,36 @@ final class NotchState: ObservableObject {
 
 /// Layout constants for the expanded quick-reminder panel.
 enum NotchLayout {
-    /// Base (100 % text size) open panel size.
-    static let baseOpenSize = CGSize(width: 600, height: 214)
-    /// Open panel size at the user's text size: the content area below the 38 pt notch band
-    /// scales with the text; width grows a little too so long titles keep their room.
-    @MainActor static var openSize: CGSize {
+    /// Base (100 % text size) open panel width; the height follows from `contentHeight`.
+    static let baseOpenWidth: CGFloat = 600
+    /// Notch band assumed until the display is known (14"/16" MacBook Pro: 38 pt + 1 pt bleed).
+    static let defaultNotchBandHeight: CGFloat = 39
+
+    /// Open panel size for the default notch band (initial state, tests, previews).
+    @MainActor static var openSize: CGSize { openSize(notchBandHeight: defaultNotchBandHeight) }
+
+    /// Open panel size at the user's text size: the width grows a little so long titles keep
+    /// their room; the height is the notch band (dead zone) plus the content's vertical rhythm,
+    /// so the bottom bar always ends exactly `Theme.horizontalPadding` above the body edge and
+    /// nothing is ever centred-and-clipped by an undersized frame.
+    @MainActor static func openSize(notchBandHeight: CGFloat) -> CGSize {
         let s = textScale
-        // 38 pt notch band + 54 pt of fixed vertical rhythm (8 + 10 + 14 + 22) + 122 pt of content that scales.
-        let fixed: CGFloat = 38 + 54
-        return CGSize(width: (baseOpenSize.width * min(1 + (s - 1) * 0.5, 1.3)).rounded(),
-                      height: (fixed + (baseOpenSize.height - fixed) * s).rounded())
+        return CGSize(width: (baseOpenWidth * min(1 + (s - 1) * 0.5, 1.3)).rounded(),
+                      height: notchBandHeight + contentHeight(textScale: s))
+    }
+
+    /// Vertical rhythm of the open content below the notch band (SPEC §4) at text scale `s`.
+    /// Every term has a counterpart in QuickReminderView / HeaderView / InputView / BottomBar;
+    /// a change there must be mirrored here (`NotchStateTests.openHeightFollowsTheRhythm`).
+    @MainActor static func contentHeight(textScale s: CGFloat) -> CGFloat {
+        func sc(_ v: CGFloat) -> CGFloat { (v * s).rounded(.toNearestOrEven) }
+        let header = sc(36)                                   // ⓧ hit frame, taller than the 22 pt title
+        let input = (PlainTextView.lineHeight(for: sc(19)) + 2)
+            + 1                                               // row spacing
+            + (PlainTextView.lineHeight(for: sc(15)) + 2)
+        let chipSlot = sc(26)
+        let bottomBar = sc(48)                                // ✓ button, taller than the 44 pt pill
+        return 8 + header + 10 + input + chipSlot + 8 + bottomBar + Theme.horizontalPadding
     }
     /// System text size (System Settings → Accessibility → Display → Text size, or per-app),
     /// relative to the default 13 pt body. Read live so every open reflects the current setting.
@@ -92,7 +112,9 @@ enum NotchLayout {
     /// by the window edge (notch-research.md: "a bouncy spring overshoots the mask").
     static let overshootPadding: CGFloat = 24
     /// Window / container size: open panel plus overshoot room on the sides and bottom.
-    @MainActor static var canvasSize: CGSize {
+    @MainActor static var canvasSize: CGSize { canvasSize(for: openSize) }
+
+    static func canvasSize(for openSize: CGSize) -> CGSize {
         CGSize(width: openSize.width + 2 * overshootPadding, height: openSize.height + overshootPadding)
     }
     static let closedTopRadius: CGFloat = NotchShape.Radius.closedTop

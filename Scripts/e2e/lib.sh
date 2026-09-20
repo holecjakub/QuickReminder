@@ -5,9 +5,9 @@
 #  - All screen coordinates are top-left GLOBAL points (screencapture -R /
 #    CGEvent space). The built-in display is at global origin (0,0) and is
 #    1800x1169pt; the notch is centred at x=901; the open panel spans
-#    x 601-1201 / y 0-214 within it.
+#    x 601-1201 / y 0-240 within it.
 #  - The main capture region used by almost every assertion is
-#    "601,0,600,214" (600x214pt -> 1200x428px on this 2x Retina display),
+#    "601,0,600,240" (600x240pt -> 1200x480px on this 2x Retina display),
 #    aliased below as $PANEL_REGION.
 #  - $CLICK is the path to the compiled click helper (Scripts/click.swift).
 #  - $PIXELS is `python3 Scripts/e2e/pixels.py`.
@@ -16,9 +16,9 @@
 NOTCH_X=901
 NOTCH_H=38
 PANEL_W=600
-PANEL_H=214
+PANEL_H=240
 PANEL_LEFT=601
-PANEL_REGION="601,0,600,214"
+PANEL_REGION="601,0,600,240"
 
 # init_geometry -- derive every coordinate from the built-in display (requires $CLICK).
 init_geometry() {
@@ -35,7 +35,7 @@ init_geometry() {
 
 # Thresholds are relative to a closed baseline measured once after launch
 # (measure_baseline); the absolute defaults keep working on a plain wallpaper.
-# A fully open panel adds ~420k dark px over the 600x214 region; the parked
+# A fully open panel adds ~470k dark px over the 600x240 region; the parked
 # silhouette (even hover-swollen) stays within ~45k of the baseline.
 DARK_BASELINE=0
 DARK_OPEN_MIN=150000
@@ -44,7 +44,7 @@ DARK_CLOSED_MAX=100000
 # measure_baseline -- sample the closed state once and shift the thresholds accordingly.
 measure_baseline() {
     local png; png=$(shot "baseline_closed")
-    DARK_BASELINE=$(dark_count "$png" 0 0 600 214 20)
+    DARK_BASELINE=$(dark_count "$png" 0 0 "$PANEL_W" "$PANEL_H" 20)
     DARK_OPEN_MIN=$(( DARK_BASELINE + 100000 ))
     DARK_CLOSED_MAX=$(( DARK_BASELINE + 60000 ))
     log_step "closed baseline dark=$DARK_BASELINE open>=$DARK_OPEN_MIN closed<=$DARK_CLOSED_MAX"
@@ -87,15 +87,15 @@ silhouette_width() {
 assert_open() {
     local label="$1"
     local png; png=$(shot "$label")
-    local n; n=$(dark_count "$png" 0 0 600 214 20)
+    local n; n=$(dark_count "$png" 0 0 "$PANEL_W" "$PANEL_H" 20)
     if [[ "$n" -lt "$DARK_OPEN_MIN" ]]; then
         echo "expected open (dark=$n < $DARK_OPEN_MIN) at $label"
         return 1
     fi
     # A plain black surface under the notch (dark terminal, video) must never pass as "open":
     # the grey ⓧ close button (#59595D, list-colour independent — the header takes the list's
-    # colour) at the panel's top-right is the signature. Nothing is typed unless this passes.
-    local grey; grey=$(color_count "$png" 520 35 60 50 59595D 28)
+    # colour) at the panel's top-right is the signature (ⓧ centre at y 65: 39 + 8 + 18). Nothing is typed unless this passes.
+    local grey; grey=$(color_count "$png" 520 40 60 50 59595D 28)
     if [[ "$grey" -lt 300 ]]; then
         echo "expected the grey close button (grey=$grey < 300) at $label"
         return 1
@@ -108,7 +108,7 @@ assert_open() {
 assert_closed() {
     local label="$1"
     local png; png=$(shot "$label")
-    local n; n=$(dark_count "$png" 0 0 600 214 20)
+    local n; n=$(dark_count "$png" 0 0 "$PANEL_W" "$PANEL_H" 20)
     if [[ "$n" -gt "$DARK_CLOSED_MAX" ]]; then
         echo "expected closed (dark=$n > $DARK_CLOSED_MAX) at $label"
         return 1
