@@ -33,13 +33,13 @@ KEY_ID="$(basename "$ASC_KEY" .p8)"; KEY_ID="${KEY_ID#AuthKey_}"
 REPO_FLAG=(); [[ -n "$REPO" ]] && REPO_FLAG=(--repo "$REPO")
 
 echo "▶ Setting GitHub secrets${REPO:+ on $REPO}"
-base64 < "$P12" | tr -d '\n' | gh secret set MACOS_CERTIFICATE "${REPO_FLAG[@]}"
-gh secret set MACOS_CERTIFICATE_PWD "${REPO_FLAG[@]}" < "$P12_PW_FILE"
-openssl rand -base64 24 | gh secret set KEYCHAIN_PASSWORD "${REPO_FLAG[@]}"
-base64 < "$ASC_KEY" | tr -d '\n' | gh secret set ASC_API_KEY_P8 "${REPO_FLAG[@]}"
-printf '%s' "$KEY_ID" | gh secret set ASC_KEY_ID "${REPO_FLAG[@]}"
-printf '%s' "$ASC_ISSUER" | gh secret set ASC_ISSUER_ID "${REPO_FLAG[@]}"
-gh secret list "${REPO_FLAG[@]}"
+base64 < "$P12" | tr -d '\n' | gh secret set MACOS_CERTIFICATE ${REPO_FLAG[@]+"${REPO_FLAG[@]}"}
+gh secret set MACOS_CERTIFICATE_PWD ${REPO_FLAG[@]+"${REPO_FLAG[@]}"} < "$P12_PW_FILE"
+openssl rand -base64 24 | gh secret set KEYCHAIN_PASSWORD ${REPO_FLAG[@]+"${REPO_FLAG[@]}"}
+base64 < "$ASC_KEY" | tr -d '\n' | gh secret set ASC_API_KEY_P8 ${REPO_FLAG[@]+"${REPO_FLAG[@]}"}
+printf '%s' "$KEY_ID" | gh secret set ASC_KEY_ID ${REPO_FLAG[@]+"${REPO_FLAG[@]}"}
+printf '%s' "$ASC_ISSUER" | gh secret set ASC_ISSUER_ID ${REPO_FLAG[@]+"${REPO_FLAG[@]}"}
+gh secret list ${REPO_FLAG[@]+"${REPO_FLAG[@]}"}
 
 echo "▶ Writing ~/.config/quickreminder/notary.env for Scripts/release.sh"
 mkdir -p "$HOME/.config/quickreminder"
