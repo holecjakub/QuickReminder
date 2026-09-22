@@ -35,3 +35,12 @@ reference/*.jpeg
 reference/*.heic
 reference/*.mov
 reference/*.mp4
+
+# AI assistant files stay local (never published)
+CLAUDE.md
+AGENTS.md
+ONBOARDING.md
+MEMORY.md
+.claude/
+.codex/
+.agents/
