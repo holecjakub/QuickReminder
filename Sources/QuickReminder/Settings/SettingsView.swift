@@ -2,10 +2,32 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject private var remindersService = RemindersService.shared
+    @ObservedObject private var loginItem = LoginItem.shared
     @AppStorage("selectedListId") private var selectedListId: String = ""
 
     var body: some View {
         Form {
+            Section("General") {
+                Toggle("Launch at login", isOn: Binding(
+                    get: { loginItem.isEnabled },
+                    set: { loginItem.set($0) }
+                ))
+                if loginItem.requiresApproval {
+                    HStack {
+                        Text("Approve QuickReminder under Login Items to finish.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Open Login Items") { loginItem.openSystemSettings() }
+                    }
+                }
+                if let error = loginItem.errorText {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+
             Section("Hotkey") {
                 LabeledContent("Show Quick Reminder:") {
                     HotkeyRecorderView()
@@ -47,10 +69,10 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 400)
-        .padding()
-        .navigationTitle("QuickReminder Settings")
+        .frame(width: 440)
+        .fixedSize(horizontal: false, vertical: true)
         .onAppear {
+            loginItem.refresh()
             if remindersService.accessGranted {
                 remindersService.loadCalendars()
             }

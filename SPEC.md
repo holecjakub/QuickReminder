@@ -25,7 +25,7 @@ Notch research (boring.notch, NotchDrop, DynamicNotchKit): `reference/notch-rese
 | Flag icon | Toggles flagged (orange `flag.fill`); stored as **High priority** (EventKit exposes no flag) |
 | `⌘↩`, `↩` in a field, or click ✓ | Saves, then the “saved” choreography: content fades, the panel collapses to notch height but stays 72 pt wider on each side, the ✓ flies into the right-hand extension (matched geometry), draws itself in and pops, and after 1.0 s the notch returns to normal. Reduce Motion: plain collapse. |
 | Save fails | Panel stays open, red inline message below Notes, Reminders access re-requested |
-| Menu bar icon → Settings… | Hotkey recorder (rejects bare keys, Esc/click cancels, warns when the combo is taken) + default list |
+| Menu bar icon → Settings… | Own AppKit window hosting the SwiftUI form: Launch at login (`SMAppService`), hotkey recorder (rejects bare keys, Esc/click cancels, warns when the combo is taken), default list |
 | Reopen during the collapse animation | Reverses smoothly from the current shape |
 | Reduce Motion enabled | Plain crossfades, no spring / blur / scale |
 
@@ -37,7 +37,7 @@ Non-goals (v1): subtasks, repeats, URLs, attachments.
 
 ```
 Sources/QuickReminder/
-├── QuickReminderApp.swift          @main, Settings scene
+├── QuickReminderApp.swift          @main: NSApplication + AppDelegate (no SwiftUI scenes)
 ├── AppDelegate.swift               NSStatusItem, hotkey wiring, URL scheme, creates PanelController at launch
 ├── Panel/PanelController.swift     owns NotchWindow; show/hide/toggle choreography; global + local event monitors; focus fallback
 ├── Notch/
@@ -57,7 +57,7 @@ Sources/QuickReminder/
 │   ├── NaturalDateParser.swift     EN + CZ date/time phrase detection (regex over a diacritics-folded copy)
 │   ├── HotkeyManager.swift         Carbon RegisterEventHotKey (no Accessibility permission) + HotkeyRecorderView
 │   └── Preferences.swift
-└── Settings/SettingsView.swift
+└── Settings/SettingsView.swift, SettingsWindowController.swift, LoginItem.swift
 Tests/QuickReminderCoreTests/       Swift Testing suite (swift test / Scripts/test.sh)
 ```
 
@@ -100,7 +100,7 @@ Dependencies: AppKit, SwiftUI, EventKit, Carbon. No packages.
 | Active states | date → blue icon + chip; location → `location.fill` blue; flag → `flag.fill` orange (1.0, 0.62, 0.04) |
 | Pointer | hand cursor. Pill icons (calendar, location, flag): macOS HIG hover feedback, a circular highlight (white 10 %, 18 % pressed, 0.12 s fade), no scaling so the row never shifts. Round controls (ⓧ, ✓, header, chips): 1.06× hover / 0.94× press spring, hit-tested on the layout frame. The date options open as a native `NSMenu` from a plain button (a SwiftUI `Menu` with the borderless style brought its own AppKit hover chrome and resized on hover). |
 | Vertical rhythm | notch band 38 → 8 → header → 10 → input → flexible → fixed 26 pt slot for the date chip / suggestion / error → 8 → bottom bar → 20 bottom (equal to the 20 pt side inset, so the ✓ sits the same distance from the right and bottom edges). The slot is always reserved, so the bar never moves when a chip appears. |
-| Text size | Every font and control metric is multiplied by `NotchLayout.textScale` = system body size ÷ 13 (System Settings → Accessibility → Display → Text size, incl. per-app), clamped 0.85–1.6; the open panel height scales with it (`38 + 176 × scale`), width up to 1.3×. Display scaling (Displays → resolution) needs nothing: all geometry is in points and the notch is read live from `NSScreen`. `QR_TEXT_SCALE=1.3` forces a scale for layout checks. |
+| Text size | Every font and control metric is multiplied by `NotchLayout.textScale` = system body size ÷ 13 (System Settings → Accessibility → Display → Text size, incl. per-app), clamped 0.85–1.6; the open panel height scales with it (notch band + `NotchLayout.contentHeight(textScale:)`), width up to 1.3×. Display scaling (Displays → resolution) needs nothing: all geometry is in points and the notch is read live from `NSScreen`. `QR_TEXT_SCALE=1.3` forces a scale for layout checks. |
 
 ---
 

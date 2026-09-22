@@ -4,7 +4,9 @@ All notable changes to QuickReminder. Format: [Keep a Changelog](https://keepach
 
 ## Unreleased
 
-_Nothing yet._
+- Settings… now opens a window (it silently did nothing: the SwiftUI `Settings` scene has no responder in an accessory app driven by AppKit); the app is a plain `NSApplication` entry point and the settings form lives in its own window.
+- New setting: Launch at login (`SMAppService`, with the System Settings approval hint).
+- Quit in the status-bar menu was greyed out (its target could not perform `terminate:`); fixed.
 
 ## 0.2.0
 

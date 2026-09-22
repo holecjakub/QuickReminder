@@ -83,6 +83,7 @@ set +e
     -framework SwiftUI \
     -framework EventKit \
     -framework Carbon \
+    -framework ServiceManagement \
     -o "$EXECUTABLE" \
     "${SWIFT_FILES[@]}"
 COMPILE_STATUS=$?
