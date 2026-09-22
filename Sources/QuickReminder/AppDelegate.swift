@@ -39,7 +39,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
-        for item in menu.items {
+        // Only our own actions target the delegate; Quit goes down the responder chain to
+        // NSApplication (a delegate target cannot perform `terminate:` and the item is disabled).
+        for item in menu.items where item.action != #selector(NSApplication.terminate(_:)) {
             item.target = self
         }
         statusItem?.menu = menu
@@ -61,12 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettings() {
-        NSApp.activate()
-        // SwiftUI's Settings scene responds to an undocumented selector; try both spellings.
-        for name in ["show" + "SettingsWindow:", "show" + "PreferencesWindow:"] {
-            if NSApp.sendAction(NSSelectorFromString(name), to: nil, from: nil) { return }
-        }
-        NSLog("QuickReminder: could not open the Settings window")
+        SettingsWindowController.shared.show()
     }
 
     /// Timestamps of recent URL-scheme commands, for rate limiting (any app or web page can send them).
