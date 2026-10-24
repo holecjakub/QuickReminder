@@ -205,7 +205,7 @@ struct SchedulePopover: View {
                     .font(.system(size: Theme.s(11)))
                 }
                 .lineLimit(1)
-                .minimumScaleFactor(0.85)
+                .minimumScaleFactor(0.75)   // "Tomorrow Evening" at large text sizes
             }
             .padding(.horizontal, 10)
             .frame(maxWidth: .infinity, minHeight: Theme.s(44), alignment: .leading)

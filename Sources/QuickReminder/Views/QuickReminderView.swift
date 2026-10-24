@@ -29,6 +29,8 @@ struct QuickReminderView: View {
 
     @Environment(\.listAccent) private var accent
 
+    private var anyPopoverShown: Bool { showListPicker || showLocationField || showCustomDatePicker }
+
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
@@ -103,8 +105,16 @@ struct QuickReminderView: View {
             showLocationField = false
             showCustomDatePicker = false
         }
+        .onReceive(NotificationCenter.default.publisher(for: .panelDismissPopovers)) { _ in
+            showListPicker = false
+            showLocationField = false
+            showCustomDatePicker = false
+        }
+        .onChange(of: anyPopoverShown) { _, shown in
+            PanelController.shared.popoverIsOpen = shown
+        }
         .onChange(of: showCustomDatePicker) { _, isShown in
-            // The popover is its own window; hand the keyboard back to the panel's title row.
+            // Hand the keyboard back to the panel's title row once Set Date closes.
             if !isShown { DispatchQueue.main.async { PanelController.shared.restoreKeyFocus() } }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dueDate != nil)

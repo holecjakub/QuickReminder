@@ -272,6 +272,9 @@ final class PanelController {
         }
     }
 
+    /// Set by the root view while one of its popovers is shown (see the Esc handling).
+    var popoverIsOpen = false
+
     // MARK: - Focus
 
     /// A popover (Set Date, location) closed: the panel takes the keyboard back, and the title
@@ -447,12 +450,16 @@ final class PanelController {
     private func installLocalEventMonitor() {
         guard localEventMonitor == nil else { return }
         localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown]) { [weak self] event in
-            // Popovers (Set Date, location) are their own windows and bypass this on purpose:
-            // Esc there closes just the popover (its .cancelAction), and a second Esc, now in
-            // the panel, closes the panel.
             guard let self, self.machine.isVisible, event.window === self.window else { return event }
             if event.type == .keyDown {
                 if event.keyCode == 53 { // Esc
+                    // A popover of this non-activating panel never becomes the key window: its keys
+                    // arrive here with `event.window` = the panel. So the first Esc closes only the
+                    // popover (cancel, nothing written) and a second Esc closes the panel.
+                    if self.popoverIsOpen {
+                        NotificationCenter.default.post(name: .panelDismissPopovers, object: nil)
+                        return nil
+                    }
                     self.hide()
                     return nil
                 }
@@ -505,4 +512,6 @@ final class PanelController {
 extension Notification.Name {
     static let panelWillShow = Notification.Name("PanelWillShow")
     static let panelDidHide = Notification.Name("PanelDidHide")
+    /// Esc while a popover (list picker, Set Date, location) is shown: close it, keep the panel.
+    static let panelDismissPopovers = Notification.Name("PanelDismissPopovers")
 }
