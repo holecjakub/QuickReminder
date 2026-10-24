@@ -104,7 +104,7 @@ struct BottomBar: View {
         .buttonStyle(HoverHighlightButtonStyle())
         .accessibilityLabel("Add date")
         .popover(isPresented: $showCustomDatePicker, arrowEdge: .bottom) {
-            DatePickerPopover(selectedDate: $dueDate, isPresented: $showCustomDatePicker)
+            DatePickerPopover(selectedDate: $dueDate, isPresented: $showCustomDatePicker, accent: accent)
         }
     }
 
