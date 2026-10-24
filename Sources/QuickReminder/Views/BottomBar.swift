@@ -99,6 +99,7 @@ struct BottomBar: View {
                                systemImage: DatePreset.systemImage(for: preset),
                                detail: Self.dateFormatter.presetDetail(date, now: now)) {
                     dueDate = DatePreset.date(for: preset, now: AppClock.now)
+                    consumeLiveSuggestion()
                 }
             }
             dateMenuPresenter.show([
@@ -107,6 +108,7 @@ struct BottomBar: View {
                 .action("Mark as Urgent", systemImage: "alarm") {
                     flagged = true
                     dueDate = AppClock.now.addingTimeInterval(60 * 60)
+                    consumeLiveSuggestion()
                 },
             ] + presets + [
                 .separator,
@@ -129,6 +131,12 @@ struct BottomBar: View {
     }
 
     private static let dateFormatter = SuggestionDateFormatter()
+
+    /// A menu date replaces whatever the title's live phrase said, so the phrase goes (same rule
+    /// as the Set Date popover, `ScheduleCommit.consumesSuggestion`).
+    private func consumeLiveSuggestion() {
+        if ScheduleCommit.consumesSuggestion(initialText: suggestionText, action: .preset) { onConsumeSuggestion() }
+    }
 
     private var locationButton: some View {
         Button { showLocationField = true } label: {

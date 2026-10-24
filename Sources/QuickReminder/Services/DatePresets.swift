@@ -72,22 +72,19 @@ enum DatePreset: Int, CaseIterable, Sendable {
         }
     }
 
-    /// "19:00" when the preset lands today, otherwise "so 9:00" / "Sat 9:00 AM" — from locale
-    /// templates, never a hard-coded clock format.
-    static func detail(for preset: DatePreset, now: Date, calendar: Calendar = .current,
-                       locale: Locale = .autoupdatingCurrent) -> String {
-        let resolved = date(for: preset, now: now, calendar: calendar)
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.calendar = calendar
-        formatter.timeZone = calendar.timeZone
-        formatter.setLocalizedDateFormatFromTemplate(detailTemplate(for: resolved, now: now, calendar: calendar))
-        return formatter.string(from: resolved)
-    }
-
-    /// Time only for today, weekday + time otherwise (shared with the cached UI formatter).
-    static func detailTemplate(for date: Date, now: Date, calendar: Calendar = .current) -> String {
-        calendar.isDate(date, inSameDayAs: now) ? "j:mm" : "EEE j:mm"
+    /// Locale template for a date shown next to "now" (preset details, the Set button, their
+    /// spoken labels): time only today ("19:00"), weekday + time for the next six days
+    /// ("so 9:00" / "Sat 9:00 AM"), day + month + time from a week out ("1. 11. 9:00" /
+    /// "Nov 1 at 9:00 AM") — a bare weekday would name the wrong day (Next Month on a Saturday
+    /// reads "Sun 9:00", same as Tomorrow). `spoken` spells weekday and month out for VoiceOver.
+    static func detailTemplate(for date: Date, now: Date, calendar: Calendar = .current, spoken: Bool = false) -> String {
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
+                                           to: calendar.startOfDay(for: date)).day ?? 0
+        switch days {
+        case 0: return "j:mm"
+        case 1...6: return spoken ? "EEEE j:mm" : "EEE j:mm"
+        default: return spoken ? "EEEE d MMMM j:mm" : "d MMM j:mm"
+        }
     }
 
     /// The next `weekday` (1 = Sunday … 7 = Saturday) strictly after today, at the start of the day.

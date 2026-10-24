@@ -98,6 +98,9 @@ struct QuickReminderView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(setDateShortcut)
         .onReceive(NotificationCenter.default.publisher(for: .panelWillShow)) { _ in
+            // Belt and braces next to the locale notification: a 12/24-hour switch while the app
+            // ran shows up on the next open at the latest.
+            SuggestionDateFormatter.invalidateCache()
             resetState()
         }
         .onReceive(NotificationCenter.default.publisher(for: .panelDidHide)) { _ in

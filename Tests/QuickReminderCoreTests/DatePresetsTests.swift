@@ -63,16 +63,6 @@ struct DatePresetsTests {
         #expect(date(.nextMonth, prague(2026, 12, 15, 12, 0)) == "2027-01-01 09:00")
     }
 
-    @Test func detailFollowsLocale() {
-        let now = prague(2026, 10, 19, 10, 0)
-        let cs = Locale(identifier: "cs_CZ"), en = Locale(identifier: "en_US")
-        #expect(plainSpaces(DatePreset.detail(for: .weekend, now: now, calendar: pragueCalendar, locale: cs)) == "so 9:00")
-        #expect(plainSpaces(DatePreset.detail(for: .weekend, now: now, calendar: pragueCalendar, locale: en)) == "Sat 9:00 AM")
-        // Lands today → time only.
-        #expect(plainSpaces(DatePreset.detail(for: .evening, now: now, calendar: pragueCalendar, locale: cs)) == "19:00")
-        #expect(plainSpaces(DatePreset.detail(for: .evening, now: now, calendar: pragueCalendar, locale: en)) == "7:00 PM")
-    }
-
     @Test func menuTitlesKeepTheRemindMeRows() {
         let now = prague(2026, 10, 19, 10, 0)
         #expect(DatePreset.menuTitle(for: .inOneHour, now: now, calendar: pragueCalendar) == "Remind Me In 1 Hour")
@@ -106,5 +96,61 @@ struct DatePresetsTests {
         let tonight = try #require(NaturalDateParser.parse("tonight", now: now, calendar: pragueCalendar))
         #expect(pragueString(tonight.date) == "2026-10-19 20:00")
         #expect(date(.evening, now) == "2026-10-19 19:00")
+    }
+
+    @Test func detailTemplateByDistance() {
+        let now = prague(2026, 10, 24, 17, 39)   // Saturday
+        func template(_ date: Date, spoken: Bool = false) -> String {
+            DatePreset.detailTemplate(for: date, now: now, calendar: pragueCalendar, spoken: spoken)
+        }
+        #expect(template(prague(2026, 10, 24, 19, 0)) == "j:mm")
+        #expect(template(prague(2026, 10, 25, 9, 0)) == "EEE j:mm")
+        #expect(template(prague(2026, 10, 30, 9, 0)) == "EEE j:mm")        // 6 days
+        #expect(template(prague(2026, 10, 31, 9, 0)) == "d MMM j:mm")      // 7 days
+        #expect(template(prague(2026, 10, 31, 9, 0), spoken: true) == "EEEE d MMMM j:mm")
+        #expect(template(prague(2026, 10, 23, 9, 0)) == "d MMM j:mm")      // past day
+    }
+}
+
+/// The formatter the menu, the preset cards and the Set button actually use.
+@MainActor
+struct PresetDetailTests {
+    private let cs = SuggestionDateFormatter(locale: Locale(identifier: "cs_CZ"), calendar: pragueCalendar)
+    private let en = SuggestionDateFormatter(locale: Locale(identifier: "en_US"), calendar: pragueCalendar)
+
+    private func detail(_ formatter: SuggestionDateFormatter, _ preset: DatePreset, _ now: Date, spoken: Bool = false) -> String {
+        plainSpaces(formatter.presetDetail(DatePreset.date(for: preset, now: now, calendar: pragueCalendar), now: now, spoken: spoken))
+    }
+
+    @Test func followsLocale() {
+        let now = prague(2026, 10, 19, 10, 0)
+        #expect(detail(cs, .weekend, now) == "so 9:00")
+        #expect(detail(en, .weekend, now) == "Sat 9:00 AM")
+        // Lands today → time only.
+        #expect(detail(cs, .evening, now) == "19:00")
+        #expect(detail(en, .evening, now) == "7:00 PM")
+    }
+
+    /// Saturday 24 Oct: Tomorrow (Sun 25) and Next Month (Sun 1 Nov) must not both read
+    /// "Sun 9:00", and Next Weekend (Sat 31) must not read "Sat 9:00" (today).
+    @Test func aWeekOrMoreAheadShowsTheDate() {
+        let now = prague(2026, 10, 24, 17, 39)
+        #expect(detail(en, .tomorrow, now) == "Sun 9:00 AM")
+        #expect(detail(en, .nextMonth, now) == "Nov 1 at 9:00 AM")
+        #expect(detail(en, .weekend, now) == "Oct 31 at 9:00 AM")
+        #expect(detail(cs, .tomorrow, now) == "ne 9:00")
+        #expect(detail(cs, .nextMonth, now) != detail(cs, .tomorrow, now))
+        #expect(detail(cs, .nextMonth, now) == "1. 11. 9:00")
+        #expect(!detail(cs, .weekend, now).hasPrefix("so"))
+        #expect(detail(en, .nextMonth, now, spoken: true) == "Sunday, November 1 at 9:00 AM")
+        #expect(detail(en, .tomorrow, now, spoken: true) == "Sunday 9:00 AM")
+    }
+
+    @Test func cacheIsPerLocaleAndCanBeDropped() {
+        let now = prague(2026, 10, 19, 10, 0)
+        #expect(detail(cs, .evening, now) != detail(en, .evening, now))
+        SuggestionDateFormatter.invalidateCache()
+        #expect(SuggestionDateFormatter.cachedFormatterCount == 0)
+        #expect(detail(en, .evening, now) == "7:00 PM")
     }
 }

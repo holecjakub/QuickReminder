@@ -7,6 +7,11 @@ import Foundation
 /// a bare hour `14` / `3` (1…6 read as PM, like the parser), `930` / `1430`, `14:30` / `14.30`,
 /// offsets `+90m` / `+2h` / `+3d`, and a leading weekday abbreviation ("fri 2pm").
 ///
+/// `D.MM` is ambiguous in Czech: "15.11" is a date, "14.30" a time. A dotted pair whose second
+/// part is 10…12 (and first part a day, 1…31) is read as day.month ("15.11", "24.12", "1.12");
+/// anything else, including a zero-padded "8.05", stays a time. `14:30` with a colon is always a
+/// time; "12:10" types what "12.10" (12 Oct) no longer means.
+///
 /// Known rejection: anything that is not entirely a date, including "tomorrow please" — the field
 /// would otherwise silently drop words the user may have meant.
 enum ScheduleInput {
@@ -20,9 +25,13 @@ enum ScheduleInput {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return .empty }
 
-        if let shorthand = shorthand(trimmed, now: now, calendar: calendar) { return shorthand }
-
-        let phrase = withWeekdayPrefix(trimmed)
+        let phrase: String
+        if isDottedDayMonth(trimmed) {
+            phrase = trimmed + "."   // the parser's Czech date form is "15.11."
+        } else {
+            if let shorthand = shorthand(trimmed, now: now, calendar: calendar) { return shorthand }
+            phrase = withWeekdayPrefix(trimmed)
+        }
         guard let suggestion = NaturalDateParser.parse(phrase, now: now, calendar: calendar) else { return .invalid }
         let leftover = NaturalDateParser.removingMatch(from: phrase, suggestion: suggestion)
             .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
@@ -66,6 +75,13 @@ enum ScheduleInput {
             }
         }
         return nil
+    }
+
+    /// "15.11" / "1.12": a dot, a day 1…31 and a month 10…12 (see the type comment).
+    private static func isDottedDayMonth(_ text: String) -> Bool {
+        guard let match = text.wholeMatch(of: /(\d{1,2})\.(\d{2})/),
+              let day = Int(match.1), let month = Int(match.2) else { return false }
+        return (1...31).contains(day) && (10...12).contains(month)
     }
 
     /// The title parser only takes "fri" / "sat" after "on" / "next" ("sat", "sun", "wed" are

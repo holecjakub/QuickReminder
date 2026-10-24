@@ -7,7 +7,7 @@ Three layers, from fastest/narrowest to slowest/widest.
 State-machine and pure-logic coverage: `NotchMachineTests`, `NotchStateTests`,
 `NotchShapeTests`, `NaturalDateParserTests`, `SuggestionDateFormatterTests`,
 `HotkeyShortcutTests`, `ScheduleDefaultsTests`, `DatePresetsTests`,
-`ScheduleInputTests`, `PopUpMenuTests` (see `Tests/QuickReminderCoreTests/`).
+`ScheduleInputTests`, `ScheduleCommitTests`, `PresetDetailTests`, `PopUpMenuTests` (see `Tests/QuickReminderCoreTests/`).
 The scheduling tests pin `now` and inject a Europe/Prague calendar (real DST
 days) and cs_CZ / en_US locales. These run
 headless, no app window, no Accessibility permission, and are what CI runs on

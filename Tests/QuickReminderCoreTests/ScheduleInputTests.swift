@@ -35,6 +35,14 @@ struct ScheduleInputTests {
         ("+2 H", "2026-10-23 12:00"),
         ("+3d", "2026-10-26 09:00"),
         ("15.11.", "2026-11-15 09:00"),
+        ("15.11", "2026-11-15 09:00"),        // Czech day.month without the trailing dot
+        ("24.12", "2026-12-24 09:00"),
+        ("31.12", "2026-12-31 09:00"),
+        ("1.12", "2026-12-01 09:00"),
+        ("5.11", "2026-11-05 09:00"),
+        ("8.05", "2026-10-24 08:05"),         // zero-padded second part stays a time
+        ("12:10", "2026-10-23 12:10"),        // a colon is always a time
+        ("tomorrow 2pm", "2026-10-24 14:00"), // the en invalid-hint example must parse
         ("  zítra 14:00  ", "2026-10-24 14:00"),
     ])
     func valid(text: String, expected: String) {
