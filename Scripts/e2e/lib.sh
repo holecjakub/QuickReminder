@@ -136,6 +136,19 @@ press_cmd_return() {
     osascript -e 'tell application "System Events" to keystroke return using {command down}'
 }
 
+press_return() {
+    osascript -e 'tell application "System Events" to key code 36'
+}
+
+press_down() {
+    osascript -e 'tell application "System Events" to key code 125'
+}
+
+# press_cmd <key> -- e.g. press_cmd d (Set Date popover).
+press_cmd() {
+    osascript -e "tell application \"System Events\" to keystroke \"$1\" using {command down}"
+}
+
 press_tab() {
     osascript -e 'tell application "System Events" to key code 48'
 }
