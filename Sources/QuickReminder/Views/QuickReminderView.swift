@@ -110,7 +110,7 @@ struct QuickReminderView: View {
 
     private func updateSuggestion(for text: String) {
         guard dueDate == nil else { suggestion = nil; return }
-        let minute = Date().timeIntervalSinceReferenceDate.rounded(.down) // second precision is enough
+        let minute = AppClock.now.timeIntervalSinceReferenceDate.rounded(.down) // second precision is enough
         let parsed = NaturalDateParser.parse(text, now: Date(timeIntervalSinceReferenceDate: minute))
         if let parsed, parsed.matchedText == dismissedSuggestionText {
             suggestion = nil
@@ -124,15 +124,9 @@ struct QuickReminderView: View {
     @discardableResult
     private func applySuggestionIfAny() -> Bool {
         guard let s = suggestion else { return false }
-        var date = s.date
-        if !s.hasTime {
-            let cal = Calendar.current
-            date = cal.date(bySettingHour: 9, minute: 0, second: 0, of: date) ?? date
-            // "today" after 9:00 → next full hour instead of an alarm already in the past.
-            if cal.isDateInToday(date), date < Date() {
-                date = cal.nextDate(after: Date(), matching: DateComponents(minute: 0, second: 0), matchingPolicy: .nextTime) ?? date
-            }
-        }
+        // Day-only phrases share the popover's and presets' rule: 9:00, or the next :00/:30 slot
+        // for "today" after 9:00.
+        let date = s.hasTime ? s.date : ScheduleDefaults.resolveDayOnly(s.date, now: AppClock.now)
         let stripped = NaturalDateParser.removingMatch(from: title, suggestion: s)
         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
             dueDate = date
