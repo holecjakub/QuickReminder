@@ -274,6 +274,14 @@ final class PanelController {
 
     // MARK: - Focus
 
+    /// A popover (Set Date, location) closed: the panel takes the keyboard back, and the title
+    /// field gets it unless a text row still owns it.
+    func restoreKeyFocus() {
+        guard machine.isVisible, !state.isSaving, let window else { return }
+        window.makeKey()
+        focusTitleFieldIfNeeded()
+    }
+
     /// Makes the first editable text field in the hosting view the first responder
     /// unless the user is already editing something.
     private func focusTitleFieldIfNeeded() {
@@ -439,6 +447,9 @@ final class PanelController {
     private func installLocalEventMonitor() {
         guard localEventMonitor == nil else { return }
         localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown]) { [weak self] event in
+            // Popovers (Set Date, location) are their own windows and bypass this on purpose:
+            // Esc there closes just the popover (its .cancelAction), and a second Esc, now in
+            // the panel, closes the panel.
             guard let self, self.machine.isVisible, event.window === self.window else { return event }
             if event.type == .keyDown {
                 if event.keyCode == 53 { // Esc

@@ -11,6 +11,10 @@ struct BottomBar: View {
 
     @Binding var showLocationField: Bool
     @Binding var showCustomDatePicker: Bool
+    /// The title's live, undismissed date phrase: prefilled into the Set Date popover.
+    let suggestionText: String?
+    /// Strips that phrase from the title once the popover commits it.
+    let onConsumeSuggestion: () -> Void
     let saveNamespace: Namespace.ID
     let saveButtonYielded: Bool
     @Environment(\.listAccent) private var accent
@@ -84,29 +88,47 @@ struct BottomBar: View {
 
     @State private var dateMenuPresenter = PopUpMenu()
 
+    /// Rows keep fixed positions (labels adapt, nothing hides), each showing the time it resolves
+    /// to, computed when the menu opens.
     private var dateMenu: some View {
         Button {
+            let now = AppClock.now
+            let presets: [PopUpMenu.Item] = [DatePreset.inOneHour, .evening, .tomorrow, .weekend, .nextWeek].map { preset in
+                let date = DatePreset.date(for: preset, now: now)
+                return .action(DatePreset.menuTitle(for: preset, now: now),
+                               systemImage: DatePreset.systemImage(for: preset),
+                               detail: Self.dateFormatter.presetDetail(date, now: now)) {
+                    dueDate = DatePreset.date(for: preset, now: AppClock.now)
+                }
+            }
             dateMenuPresenter.show([
                 .action("None", systemImage: "calendar.badge.minus") { dueDate = nil },
                 .separator,
                 .action("Mark as Urgent", systemImage: "alarm") {
                     flagged = true
-                    dueDate = Date().addingTimeInterval(60 * 60)
+                    dueDate = AppClock.now.addingTimeInterval(60 * 60)
                 },
-                .action("Remind Me In 1 Hour", systemImage: "clock") { dueDate = Date().addingTimeInterval(60 * 60) },
-                .action("Remind Me Tomorrow", systemImage: "calendar") { dueDate = tomorrowAt9AM() },
+            ] + presets + [
                 .separator,
-                .action("Remind Me Later…", systemImage: "calendar") { showCustomDatePicker = true },
+                .action("Custom…", systemImage: "calendar.badge.clock", keyEquivalentHint: "d") { showCustomDatePicker = true },
             ], belowPanelAt: NSEvent.mouseLocation.x - 12)
         } label: {
             icon("calendar.badge.clock", active: dueDate != nil)
         }
         .buttonStyle(HoverHighlightButtonStyle())
-        .accessibilityLabel("Add date")
+        .accessibilityLabel("Set date and time")
         .popover(isPresented: $showCustomDatePicker, arrowEdge: .bottom) {
-            DatePickerPopover(selectedDate: $dueDate, isPresented: $showCustomDatePicker, accent: accent)
+            SchedulePopover(
+                selectedDate: $dueDate,
+                isPresented: $showCustomDatePicker,
+                accent: accent,
+                initialText: dueDate == nil ? suggestionText : nil,
+                onConsumeSuggestion: onConsumeSuggestion
+            )
         }
     }
+
+    private static let dateFormatter = SuggestionDateFormatter()
 
     private var locationButton: some View {
         Button { showLocationField = true } label: {
@@ -179,11 +201,5 @@ struct BottomBar: View {
     private func handleSave() {
         guard canSave else { return }
         onSave()
-    }
-
-    private func tomorrowAt9AM() -> Date {
-        let cal = Calendar.current
-        let tomorrow = cal.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-        return cal.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow) ?? tomorrow
     }
 }
