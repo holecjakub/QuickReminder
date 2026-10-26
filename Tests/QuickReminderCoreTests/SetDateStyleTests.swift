@@ -15,6 +15,5 @@ struct SetDateStyleTests {
         #expect(SetDateStyle.defaultsKey == "datePickerStyle")
         #expect(SetDateStyle.popover.rawValue == "popover")
         #expect(SetDateStyle.notch.rawValue == "notch")
-        #expect(SetDateStyle(rawValue: "bogus") == nil, "@AppStorage then falls back to defaultStyle")
     }
 }

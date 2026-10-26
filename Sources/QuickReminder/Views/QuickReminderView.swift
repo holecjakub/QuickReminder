@@ -298,7 +298,8 @@ struct QuickReminderView: View {
     /// panel is open, so nothing can get stuck half-shown); otherwise the popover.
     private func openSetDate() {
         switch pickerStyle {
-        case .notch: PanelController.shared.setSchedule(.controls)
+        // Already open (e.g. on the calendar): ⌘D must not collapse it back to the controls.
+        case .notch: if !schedulingInNotch { PanelController.shared.setSchedule(.controls) }
         case .popover: showSchedulePopover = true
         }
     }

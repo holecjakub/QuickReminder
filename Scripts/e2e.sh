@@ -18,7 +18,7 @@
 #   Scripts/e2e.sh --picker-style popover|notch
 #                                   Set Date style for the test instance
 #                                    (argument domain, nothing persisted);
-#                                    default: notch, whatever Settings say
+#                                    default: notch (Settings are ignored)
 #
 # Prints "PASS name" / "FAIL name (reason)" / "SKIP name (reason)" per
 # scenario and a summary line. Exit code = number of failures.

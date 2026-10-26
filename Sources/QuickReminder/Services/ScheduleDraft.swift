@@ -120,6 +120,8 @@ final class ScheduleDraft {
     /// Set / ↩ / ⌘↩: the typed date when it parses, otherwise the draft. nil when the text is not a
     /// date (the view beeps and stays open) or a commit already ran.
     func set() -> Outcome? {
+        // Relative phrases (“+2h”, “today”) count from the moment of Set, not the last keystroke.
+        if !text.isEmpty { parsed = ScheduleInput.resolve(text, now: clock(), calendar: calendar) }
         guard !committed, let date = ScheduleCommit.dateToSet(for: parsed, draft: draft) else { return nil }
         draft = date
         return finish(Outcome(date: date, presetPick: nil,

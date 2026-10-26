@@ -24,6 +24,14 @@ struct ScheduleDraftTests {
         #expect(draft(selected: existing, initialText: "zítra").draft == existing)
     }
 
+    @Test func relativeTextResolvesAtSetNotAtTheLastKeystroke() {
+        var t = now
+        let d = ScheduleDraft(selected: nil, initialText: nil, calendar: pragueCalendar, clock: { t })
+        d.text = "+2h"
+        t = prague(2026, 10, 23, 10, 30)
+        #expect(d.set()?.date == prague(2026, 10, 23, 12, 30))
+    }
+
     @Test func typingParsesOnceAndMovesTheDraft() {
         let d = draft()
         d.text = "fri 2pm"
