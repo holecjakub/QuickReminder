@@ -73,6 +73,12 @@ final class PanelController {
         dispatch(.save(reduceMotion: NotchLayout.reduceMotion), on: nil)
     }
 
+    /// In-notch Set Date (Settings → Date picker style → In notch): grow the open blob for the
+    /// scheduling controls / the month grid, or settle back to the plain panel.
+    func setSchedule(_ expansion: ScheduleExpansion) {
+        dispatch(.scheduleChanged(expansion), on: targetScreen())
+    }
+
     // MARK: - Hover / tap on the closed notch (tracking comes from the SwiftUI silhouette)
 
     func notchHoverChanged(_ hovering: Bool) {
@@ -130,7 +136,10 @@ final class PanelController {
             if state.contentVisible { state.contentVisible = false }
 
         case .relayoutOpenWindow:
-            if let screen { window?.setFrame(windowFrame(for: screen), display: true) }
+            guard let screen else { return }
+            var noAnim = Transaction(); noAnim.disablesAnimations = true
+            withTransaction(noAnim) { state.canvasSize = openCanvasSize }
+            window?.setFrame(windowFrame(for: screen), display: true)
 
         case .makeKeyAndOrderFront:
             guard let screen else { return }
@@ -185,6 +194,7 @@ final class PanelController {
             withAnimation(NotchLayout.effectiveClose) {
                 if state.isOpen { state.isOpen = false }
                 if state.isSaving { state.isSaving = false }
+                if state.schedule != .none { state.schedule = .none }
             }
 
         case .animateSaving:
@@ -192,6 +202,7 @@ final class PanelController {
             withAnimation(NotchLayout.savingAnimation) {
                 state.isOpen = false
                 state.isSaving = true
+                state.schedule = .none
                 state.savedBadgeShown = true   // same transaction as the button's removal → the ✓ flies
             }
 
@@ -212,6 +223,16 @@ final class PanelController {
 
         case .haptic:
             NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+
+        case .animateSchedule(let expansion):
+            withAnimation(NotchLayout.effectiveSchedule) { state.schedule = expansion }
+
+        case .growCanvasForSchedule, .fitCanvasToPanel:
+            // Top-anchored and centred like the open canvas, so the visible blob does not move.
+            guard let screen = screen ?? targetScreen(), let window else { return }
+            var noAnim = Transaction(); noAnim.disablesAnimations = true
+            withTransaction(noAnim) { state.canvasSize = openCanvasSize }
+            window.setFrame(windowFrame(for: screen), display: true)
 
         // Timers
         case .scheduleClose:
@@ -289,7 +310,10 @@ final class PanelController {
     /// unless the user is already editing something.
     private func focusTitleFieldIfNeeded() {
         guard machine.isVisible, !state.isSaving, let window, let hostingView else { return }
-        if window.firstResponder is NSTextView { return }
+        // The title / notes rows are real text views. A field editor belongs to a SwiftUI
+        // TextField (the in-notch Set Date fields) that may just have left the hierarchy and
+        // still holds first responder, so it does not count as "the user is editing".
+        if let editing = window.firstResponder as? NSTextView, !editing.isFieldEditor { return }
         window.makeKey()
         if let field = Self.titleTextView(in: hostingView) {
             window.makeFirstResponder(field)
@@ -339,8 +363,13 @@ final class PanelController {
         NotchLayout.refreshTextScale()
         setClosedSize(NotchGeometry.closedShapeSize(for: screen, topCornerRadius: NotchLayout.closedTopRadius))
         // The open body is the notch band actually on this display plus the content rhythm.
-        let open = NotchLayout.openSize(notchBandHeight: state.closedSize.height)
+        let band = state.closedSize.height
+        let open = NotchLayout.openSize(notchBandHeight: band)
         if state.openSize != open { state.openSize = open }
+        let schedule = NotchLayout.openSize(notchBandHeight: band, schedule: .controls)
+        if state.scheduleSize != schedule { state.scheduleSize = schedule }
+        let calendar = NotchLayout.openSize(notchBandHeight: band, schedule: .calendar)
+        if state.scheduleCalendarSize != calendar { state.scheduleCalendarSize = calendar }
     }
 
     /// Publishing unchanged values would re-render the whole panel for nothing.
@@ -348,9 +377,14 @@ final class PanelController {
         if state.closedSize != size { state.closedSize = size }
     }
 
+    /// The open canvas: the plain panel, or the tallest schedule state while the blob may grow.
+    private var openCanvasSize: CGSize {
+        NotchLayout.canvasSize(for: machine.canvasGrown ? state.scheduleCalendarSize : state.openSize)
+    }
+
     /// Window covers the fully-open panel, anchored to the top edge, centred on the notch.
     private func windowFrame(for screen: NSScreen) -> NSRect {
-        let size = NotchLayout.canvasSize(for: state.openSize)
+        let size = openCanvasSize
         let centerX: CGFloat
         if let notch = NotchGeometry.notchRect(for: screen) {
             centerX = notch.midX

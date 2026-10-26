@@ -43,7 +43,7 @@ struct NotchContainerView: View {
                 saveButtonYielded: state.savedBadgeShown
             )
                 .environment(\.listAccent, accent)
-                .frame(width: state.openSize.width, height: state.openSize.height)
+                .frame(width: state.panelSize.width, height: state.panelSize.height, alignment: .top)
                 .opacity(state.contentVisible ? 1 : 0)
                 .blur(radius: state.contentVisible || reduceMotion ? 0 : 8)
                 .scaleEffect(state.contentVisible || reduceMotion ? 1 : 0.94, anchor: .top)
