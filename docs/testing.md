@@ -6,7 +6,10 @@ Three layers, from fastest/narrowest to slowest/widest.
 
 State-machine and pure-logic coverage: `NotchMachineTests`, `NotchStateTests`,
 `NotchShapeTests`, `NaturalDateParserTests`, `SuggestionDateFormatterTests`,
-`HotkeyShortcutTests` (see `Tests/QuickReminderCoreTests/`). These run
+`HotkeyShortcutTests`, `ScheduleDefaultsTests`, `DatePresetsTests`,
+`ScheduleInputTests`, `ScheduleCommitTests`, `PresetDetailTests`, `PopUpMenuTests` (see `Tests/QuickReminderCoreTests/`).
+The scheduling tests pin `now` and inject a Europe/Prague calendar (real DST
+days) and cs_CZ / en_US locales. These run
 headless, no app window, no Accessibility permission, and are what CI runs on
 every push/PR via `swift test --parallel` (`.github/workflows/ci.yml`).
 
@@ -53,8 +56,18 @@ screenshot and a per-scenario log land under `build/e2e/<timestamp>/`, so a
 
 Scenarios: `hotkey_open_close`, `type_suggestion_tab`, `czech_suggestion`,
 `click_notch_opens`, `hover_swell`, `quick_crossing_no_swell`,
-`click_outside_closes`, `margin_click_closes`, `reopen_during_close`, and
-(only with `--with-save`) `save_choreography`.
+`click_outside_closes`, `margin_click_closes`, `reopen_during_close`,
+`date_menu_preset` (calendar menu → This Weekend by keyboard → accent chip),
+`schedule_popover_typed` (⌘D → `zítra 14:00` → ↩ → accent chip),
+`schedule_popover_preset_shortcut` (⌘D → ⌘3 → Tomorrow chip),
+`schedule_popover_esc` (Esc closes only the popover, the panel stays open; a
+second Esc closes it), and (only with `--with-save`) `save_choreography`.
+
+**Pinned clock:** `QR_NOW=2026-10-23T10:00` (local time, or any ISO 8601
+timestamp) shifts the app's clock, read once at launch like `QR_TEXT_SCALE`;
+time keeps running from there. The E2E runner passes it through to the test
+instance, so date labels in screenshots (menu details, presets, chips) are
+deterministic: `QR_NOW=2026-10-23T10:00 Scripts/e2e.sh`.
 
 **Requirements to run this at all:**
 - macOS, with the terminal that launches it granted Accessibility access

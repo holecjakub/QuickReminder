@@ -145,6 +145,8 @@ launch_test_instance() {
     # through the argument domain (a non-Data value makes HotkeyManager fall back to .default).
     # Nothing is persisted by this: the argument domain lives in memory only. (Recording a new
     # hotkey in the *test* instance's Settings would write to the shared persistent domain.)
+    # QR_NOW (if set in the caller's environment) is inherited: it pins the app's clock so date
+    # labels in screenshots are deterministic, e.g. QR_NOW=2026-10-23T10:00 Scripts/e2e.sh.
     QR_CAPTURE_PARKED=1 "$APP_BIN" -hotkey e2e-default >"$LOG_DIR/app.log" 2>&1 &
     disown
     sleep 1.2
@@ -400,6 +402,92 @@ save_choreography() {
     assert_closed "save_choreography_closed" || return 1
 }
 
+# The date chip sits in the same slot as the suggestion chip and takes the list colour.
+assert_date_chip() {
+    local label="$1"
+    local png; png=$(shot "$label")
+    local chip; chip=$(saturated_count "$png" 20 130 260 40)
+    if [[ "$chip" -lt 200 ]]; then
+        fail "expected an accent date chip (saturated=$chip) at $label"
+        return 1
+    fi
+    log_step "date chip present: saturated=$chip"
+}
+
+# Calendar menu -> "This Weekend" by keyboard. Rows never move (labels adapt instead), so the
+# sixth item is always the weekend preset: None, Mark as Urgent, In 1 Hour, Evening, Tomorrow,
+# Weekend.
+date_menu_preset() {
+    hotkey_toggle
+    sleep 0.8
+    assert_open "date_menu_preset_open" || return 1
+    # Calendar icon: 20 pt inset + 19 pt fillet + 11 pt pill padding + half a 38 pt hit area;
+    # bottom bar centre 20 + 24 pt above the panel's bottom edge.
+    click_at "$(( PANEL_LEFT + 69 ))" 197
+    sleep 0.6
+    shot "date_menu_preset_menu" "$(( PANEL_LEFT - 50 )),0,$(( PANEL_W + 100 )),520" >/dev/null
+    for _ in 1 2 3 4 5 6; do press_down; sleep 0.08; done
+    press_return
+    sleep 0.6
+    assert_date_chip "date_menu_preset_chip" || return 1
+    press_escape
+    sleep 0.6
+    assert_closed "date_menu_preset_closed" || return 1
+}
+
+# ⌘D -> type a Czech phrase -> Return sets the date with no pointer use.
+schedule_popover_typed() {
+    hotkey_toggle
+    sleep 0.8
+    assert_open "schedule_popover_typed_open" || return 1
+    sleep 0.3
+    press_cmd d
+    sleep 0.7
+    type_text "zítra 14:00"
+    sleep 0.4
+    shot "schedule_popover_typed_popover" "$(( PANEL_LEFT - 50 )),0,$(( PANEL_W + 100 )),720" >/dev/null
+    press_return
+    sleep 0.6
+    assert_open "schedule_popover_typed_back" || return 1
+    assert_date_chip "schedule_popover_typed_chip" || return 1
+    press_escape
+    sleep 0.6
+    assert_closed "schedule_popover_typed_closed" || return 1
+}
+
+# ⌘D -> ⌘3 commits the Tomorrow preset in one keystroke.
+schedule_popover_preset_shortcut() {
+    hotkey_toggle
+    sleep 0.8
+    assert_open "schedule_popover_preset_shortcut_open" || return 1
+    sleep 0.3
+    press_cmd d
+    sleep 0.7
+    press_cmd 3
+    sleep 0.6
+    assert_date_chip "schedule_popover_preset_shortcut_chip" || return 1
+    press_escape
+    sleep 0.6
+    assert_closed "schedule_popover_preset_shortcut_closed" || return 1
+}
+
+# Esc in the popover closes only the popover; the second Esc closes the panel.
+schedule_popover_esc() {
+    hotkey_toggle
+    sleep 0.8
+    assert_open "schedule_popover_esc_open" || return 1
+    sleep 0.3
+    press_cmd d
+    sleep 0.7
+    shot "schedule_popover_esc_popover" "$(( PANEL_LEFT - 50 )),0,$(( PANEL_W + 100 )),720" >/dev/null
+    press_escape
+    sleep 0.6
+    assert_open "schedule_popover_esc_still_open" || return 1
+    press_escape
+    sleep 0.6
+    assert_closed "schedule_popover_esc_closed" || return 1
+}
+
 # ---------------------------------------------------------------- runner
 
 ALL_SCENARIOS=(
@@ -412,6 +500,10 @@ ALL_SCENARIOS=(
     click_outside_closes
     margin_click_closes
     reopen_during_close
+    date_menu_preset
+    schedule_popover_typed
+    schedule_popover_preset_shortcut
+    schedule_popover_esc
 )
 if [[ "$WITH_SAVE" -eq 1 ]]; then
     ALL_SCENARIOS+=(save_choreography)
