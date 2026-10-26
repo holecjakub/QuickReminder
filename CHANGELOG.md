@@ -5,6 +5,7 @@ All notable changes to QuickReminder. Format: [Keep a Changelog](https://keepach
 ## Unreleased
 
 - Raycast: opening QuickReminder from Raycast (or Spotlight, Finder, the Dock) opens the panel, whether the app is running or not; it used to do nothing while running. Launch at login stays silent. `Scripts/raycast/quick-reminder.sh` adds a “Quick Reminder” Raycast Script Command.
+- The pill icons (date, location, flag) are smaller: 18 pt instead of 22 pt, in the same 38 pt hit targets.
 
 ## 0.4.0
 
