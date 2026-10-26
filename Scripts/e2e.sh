@@ -553,6 +553,17 @@ schedule_notch_expand() {
     cal=$(schedule_band_dark "$png" 540)
     log_step "after second ⌘K: calendar=$cal"
     [[ "$cal" -lt $(( before_cal + gain )) ]] || { fail "expected the second ⌘K to shrink the blob (dark=$cal)"; return 1; }
+    # Esc steps back one level: with the calendar open, the first Esc closes only the calendar.
+    press_cmd k
+    sleep 0.8
+    press_escape
+    sleep 0.9
+    png=$(shot "schedule_notch_expand_esc_calendar" "$region")
+    cal=$(schedule_band_dark "$png" 540)
+    grown=$(schedule_band_dark "$png" 300)
+    log_step "after Esc in the calendar: calendar=$cal controls=$grown"
+    [[ "$cal" -lt $(( before_cal + gain )) ]] || { fail "expected Esc to close the calendar first (dark=$cal)"; return 1; }
+    [[ "$grown" -ge $(( before + gain )) ]] || { fail "expected the controls to stay after the first Esc (dark=$grown)"; return 1; }
     press_escape
     sleep 0.9
     png=$(shot "schedule_notch_expand_back" "$region")
@@ -573,6 +584,94 @@ schedule_notch_expand() {
     assert_closed "schedule_notch_expand_closed" || return 1
 }
 
+# In-notch: ⌘↩ (and ↩ in the title / notes) is Set while the section is open — the blob settles
+# back with the accent date chip and the panel stays open. The title is left empty on purpose:
+# even a broken routing could not save a reminder then (it would just leave the section open).
+# Shift-Tab ×2 moves the keyboard from the type field back towards the text rows first; when it
+# lands in the notes or title, the ↩ exercises their routing, otherwise the field's own ↩.
+schedule_notch_return_sets() {
+    if [[ "${PICKER_STYLE:-notch}" == "popover" ]]; then
+        echo "SKIP:picker style is popover"
+        return 2
+    fi
+    local region="$(( PANEL_LEFT - 50 )),0,$(( PANEL_W + 100 )),$SCHEDULE_REGION_H"
+    local area=$(( 500 * 80 * 4 )) gain=$(( 500 * 80 * 4 * 2 / 5 ))
+    hotkey_toggle
+    sleep 0.8
+    assert_open "schedule_notch_return_open" || return 1
+    local png; png=$(shot "schedule_notch_return_before" "$region")
+    local before; before=$(schedule_band_dark "$png" 300)
+    sleep 0.3
+    press_cmd d
+    sleep 0.8
+    press_cmd_return
+    sleep 0.9
+    png=$(shot "schedule_notch_return_cmd" "$region")
+    local band; band=$(schedule_band_dark "$png" 300)
+    log_step "after ⌘D ⌘↩: band=$band (before $before)"
+    [[ "$band" -lt $(( before + gain / 4 )) ]] || { fail "expected ⌘↩ to Set and settle the blob (dark=$band)"; return 1; }
+    assert_open "schedule_notch_return_cmd_open" || return 1
+    assert_date_chip "schedule_notch_return_cmd_chip" || return 1
+    # Again from the text rows: the date chip reopens Set Date via ⌘D on the current date.
+    press_cmd d
+    sleep 0.8
+    osascript -e 'tell application "System Events" to key code 48 using {shift down}'
+    sleep 0.15
+    osascript -e 'tell application "System Events" to key code 48 using {shift down}'
+    sleep 0.3
+    press_return
+    sleep 0.9
+    png=$(shot "schedule_notch_return_text_row" "$region")
+    band=$(schedule_band_dark "$png" 300)
+    log_step "after ⌘D ⇧⇥⇧⇥ ↩: band=$band"
+    [[ "$band" -lt $(( before + gain / 4 )) ]] || { fail "expected ↩ to Set from the text rows too (dark=$band)"; return 1; }
+    assert_open "schedule_notch_return_text_row_open" || return 1
+    press_escape
+    sleep 0.6
+    assert_closed "schedule_notch_return_closed" || return 1
+}
+
+# In-notch: a click inside the section keeps it; a click on the title row (inside the panel,
+# above the section) cancels scheduling — no date written — and the panel stays open.
+schedule_notch_click_cancels() {
+    if [[ "${PICKER_STYLE:-notch}" == "popover" ]]; then
+        echo "SKIP:picker style is popover"
+        return 2
+    fi
+    local region="$(( PANEL_LEFT - 50 )),0,$(( PANEL_W + 100 )),$SCHEDULE_REGION_H"
+    local gain=$(( 500 * 80 * 4 * 2 / 5 ))
+    hotkey_toggle
+    sleep 0.8
+    assert_open "schedule_notch_click_open" || return 1
+    local png; png=$(shot "schedule_notch_click_before" "$region")
+    local before; before=$(schedule_band_dark "$png" 300)
+    sleep 0.3
+    press_cmd d
+    sleep 0.8
+    # Between the preview line and the presets (no control there), centred: inside the section.
+    click_at "$NOTCH_X" "$(( NOTCH_H + 160 ))"
+    sleep 0.6
+    png=$(shot "schedule_notch_click_inside" "$region")
+    local band; band=$(schedule_band_dark "$png" 300)
+    log_step "after a click inside the section: band=$band"
+    [[ "$band" -ge $(( before + gain )) ]] || { fail "a click inside the section closed it (dark=$band)"; return 1; }
+    # The title row ("New Reminder"), inside the panel above the section.
+    click_at "$(( PANEL_LEFT + 200 ))" "$(( NOTCH_H + 62 ))"
+    sleep 0.9
+    png=$(shot "schedule_notch_click_title" "$region")
+    band=$(schedule_band_dark "$png" 300)
+    log_step "after a click on the title: band=$band"
+    [[ "$band" -lt $(( before + gain / 4 )) ]] || { fail "expected a click on the title to cancel scheduling (dark=$band)"; return 1; }
+    assert_open "schedule_notch_click_still_open" || return 1
+    png=$(shot "schedule_notch_click_no_chip")
+    local chip; chip=$(saturated_count "$png" 20 130 260 40)
+    log_step "chip slot after cancel: saturated=$chip"
+    [[ "$chip" -lt 200 ]] || { fail "cancel wrote a date (saturated=$chip)"; return 1; }
+    press_escape
+    sleep 0.6
+    assert_closed "schedule_notch_click_closed" || return 1
+}
+
 # ---------------------------------------------------------------- runner
 
 ALL_SCENARIOS=(
@@ -590,6 +689,8 @@ ALL_SCENARIOS=(
     schedule_popover_preset_shortcut
     schedule_popover_esc
     schedule_notch_expand
+    schedule_notch_return_sets
+    schedule_notch_click_cancels
 )
 if [[ "$WITH_SAVE" -eq 1 ]]; then
     ALL_SCENARIOS+=(save_choreography)

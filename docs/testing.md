@@ -8,7 +8,7 @@ State-machine and pure-logic coverage: `NotchMachineTests`, `NotchStateTests`,
 `NotchShapeTests`, `NaturalDateParserTests`, `SuggestionDateFormatterTests`,
 `HotkeyShortcutTests`, `ScheduleDefaultsTests`, `DatePresetsTests`,
 `ScheduleInputTests`, `ScheduleCommitTests`, `ScheduleOpeningTests`, `PresetDetailTests`, `PopUpMenuTests`,
-`NotchMachineScheduleTests`, `MonthGridTests`, `DatePickerStyleTests` (see `Tests/QuickReminderCoreTests/`).
+`NotchMachineScheduleTests`, `MonthGridTests`, `DatePickerStyleTests`, `TextRowSubmitTests` (see `Tests/QuickReminderCoreTests/`).
 The scheduling tests pin `now` and inject a Europe/Prague calendar (real DST
 days) and cs_CZ / en_US locales. These run
 headless, no app window, no Accessibility permission, and are what CI runs on
@@ -69,9 +69,13 @@ Scenarios: `hotkey_open_close`, `type_suggestion_tab`, `czech_suggestion`,
 second Esc closes it) — these three are style-agnostic and exercise whichever
 Set Date style the instance runs (`--picker-style`) —,
 `schedule_notch_expand` (In notch only: ⌘D grows the black panel below its
-normal edge, ⌘K grows it further and back, Esc settles it back with the panel
-still open and the keyboard in the title; skipped with `--picker-style
-popover`), and (only with `--with-save`) `save_choreography`.
+normal edge, ⌘K grows it further and back, Esc with the calendar open closes
+only the calendar, the next Esc settles the blob back with the panel still
+open and the keyboard in the title), `schedule_notch_return_sets` (⌘↩, and ↩
+after Shift-Tab towards the text rows, Set the date with an empty title, so
+nothing can be saved), `schedule_notch_click_cancels` (a click inside the
+section keeps it; a click on the title row cancels, no date chip) — the three
+In-notch scenarios SKIP with `--picker-style popover` —, and (only with `--with-save`) `save_choreography`.
 
 **Pinned clock:** `QR_NOW=2026-10-23T10:00` (local time, or any ISO 8601
 timestamp) shifts the app's clock, read once at launch like `QR_TEXT_SCALE`;
