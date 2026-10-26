@@ -1,7 +1,24 @@
 import Foundation
 
-/// The Set Date popover's commit decisions, kept out of the view so they can be unit-tested.
+/// Set Date's open and commit decisions, kept out of the views so they can be unit-tested and
+/// shared by both styles (the popover and the in-notch section).
 enum ScheduleCommit {
+    /// What Set Date opens on. An existing date wins; then the title's live suggestion (prefilled
+    /// into the field, the draft following it when it parses); otherwise tomorrow 9:00, the most
+    /// common intent (today is ⌘1 away).
+    static func opening(selected: Date?, initialText: String?, now: Date,
+                        calendar: Calendar = .current) -> (draft: Date, text: String) {
+        if let selected { return (selected, "") }
+        let tomorrow = DatePreset.date(for: .tomorrow, now: now, calendar: calendar)
+        guard let phrase = initialText?.trimmingCharacters(in: .whitespaces), !phrase.isEmpty else {
+            return (tomorrow, "")
+        }
+        if case let .date(date) = ScheduleInput.resolve(phrase, now: now, calendar: calendar) {
+            return (date, phrase)
+        }
+        return (tomorrow, phrase)
+    }
+
     /// How the popover closed.
     enum Action: Equatable {
         /// Set button, ↩ or ⌘↩, whatever the field / calendar / time chips hold.

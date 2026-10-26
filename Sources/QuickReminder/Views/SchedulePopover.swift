@@ -35,13 +35,9 @@ struct SchedulePopover: View {
         formatter.dateTimeStyle = .numeric
         return formatter
     }()
-    private static let chipHours = [9, 12, 15, 19]
-    /// Short enough for the field at default text size (the text-cursor icon already says "type").
-    private static let placeholder = "fri 2pm, zítra 14:00, +2h"
-    /// The invalid hint's example follows the UI language a Czech user would type in.
-    private static var invalidExample: String {
-        Locale.current.language.languageCode?.identifier == "cs" ? "zítra 14:00" : "tomorrow 2pm"
-    }
+    private static let chipHours = ScheduleText.chipHours
+    private static let placeholder = ScheduleText.placeholder
+    private static var invalidExample: String { ScheduleText.invalidExample }
 
     init(selectedDate: Binding<Date?>, isPresented: Binding<Bool>, accent: Color,
          initialText: String?, onConsumeSuggestion: @escaping () -> Void) {
@@ -51,24 +47,9 @@ struct SchedulePopover: View {
         self.initialText = initialText
         self.onConsumeSuggestion = onConsumeSuggestion
 
-        let now = AppClock.now
-        // Open rules: an existing date wins; then the title's live suggestion (prefilled, all
-        // selected); otherwise tomorrow 9:00, the most common intent (today is ⌘1 away).
-        if let date = selectedDate.wrappedValue {
-            _draft = State(initialValue: date)
-            _text = State(initialValue: "")
-        } else if let phrase = initialText?.trimmingCharacters(in: .whitespaces), !phrase.isEmpty {
-            let resolved = ScheduleInput.resolve(phrase, now: now)
-            if case let .date(date) = resolved {
-                _draft = State(initialValue: date)
-            } else {
-                _draft = State(initialValue: DatePreset.date(for: .tomorrow, now: now))
-            }
-            _text = State(initialValue: phrase)
-        } else {
-            _draft = State(initialValue: DatePreset.date(for: .tomorrow, now: now))
-            _text = State(initialValue: "")
-        }
+        let opening = ScheduleCommit.opening(selected: selectedDate.wrappedValue, initialText: initialText, now: AppClock.now)
+        _draft = State(initialValue: opening.draft)
+        _text = State(initialValue: opening.text)
     }
 
     private var parsed: ScheduleInput.Result { ScheduleInput.resolve(text, now: AppClock.now) }
