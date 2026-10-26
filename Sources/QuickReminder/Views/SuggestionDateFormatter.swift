@@ -29,9 +29,22 @@ struct SuggestionDateFormatter {
     func time(from date: Date) -> String { string(from: date, template: "j:mm") }
 
     /// Time today, weekday + time this week, day + month + time beyond (presets, the Set
-    /// button). `spoken` is the VoiceOver wording.
+    /// button). `spoken` is the VoiceOver wording. Day and time are formatted separately and
+    /// joined with a space: a combined date+time template takes its glue from the language, so an
+    /// English UI with a Czech region read "1. 11. at 9:00" and "Sat 09:00" next to chips saying
+    /// "9:00". The time part is always `time(from:)`, exactly what the chips and time field show.
     func presetDetail(_ date: Date, now: Date, spoken: Bool = false) -> String {
-        string(from: date, template: DatePreset.detailTemplate(for: date, now: now, calendar: calendar, spoken: spoken))
+        guard let day = DatePreset.dayTemplate(for: date, now: now, calendar: calendar, spoken: spoken) else {
+            return time(from: date)
+        }
+        return string(from: date, template: day) + " " + time(from: date)
+    }
+
+    /// Set Date's preview line: the full day ("Saturday 24. 10." / "Saturday, October 24" /
+    /// "sobota 24. října", the day button's wording spelled out) and the time as `time(from:)`,
+    /// composed for the same reason as `presetDetail`.
+    func dayAndTime(_ date: Date) -> String {
+        string(from: date, template: "EEEE d MMMM") + " " + time(from: date)
     }
 
     /// Any locale template ("EEE d MMM", "EEEE j:mm"), cached per template.

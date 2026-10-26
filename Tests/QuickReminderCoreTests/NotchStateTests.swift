@@ -138,4 +138,47 @@ struct NotchStateTests {
         // The tallest state (with the overshoot room) still fits under the menu bar of a 13" Air.
         #expect(NotchLayout.canvasSize(for: calendar).height < 900)
     }
+
+    // MARK: - Screen clamp, section top, click outside
+
+    /// A short screen (or a large text size) clamps the grown panel to what fits above the Dock;
+    /// the section's rows scroll then. Never shorter than the plain panel.
+    @Test func scheduleHeightIsClampedToTheScreen() {
+        let band = NotchLayout.defaultNotchBandHeight
+        let plain = NotchLayout.openSize(notchBandHeight: band)
+        let natural = NotchLayout.openSize(notchBandHeight: band, schedule: .calendar)
+        #expect(NotchLayout.openSize(notchBandHeight: band, schedule: .calendar, maxHeight: natural.height + 100) == natural,
+                "fits: unchanged")
+        let clamped = NotchLayout.openSize(notchBandHeight: band, schedule: .calendar, maxHeight: 500.7)
+        #expect(clamped.height == 500, "clamped to the whole point below the limit")
+        #expect(clamped.width == natural.width)
+        #expect(NotchLayout.openSize(notchBandHeight: band, schedule: .controls, maxHeight: 100).height == plain.height,
+                "never below the plain panel")
+        #expect(NotchLayout.openSize(notchBandHeight: band, schedule: .none, maxHeight: 100) == plain)
+    }
+
+    @Test func maxPanelHeightStopsAboveTheDockWithRoomForTheOvershoot() {
+        // 14" MacBook Pro at default scaling, Dock 70 pt at the bottom, menu bar 38 pt.
+        let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let visible = CGRect(x: 0, y: 70, width: 1512, height: 982 - 70 - 38)
+        let maxHeight = NotchLayout.maxPanelHeight(screenFrame: screen, visibleFrame: visible)
+        #expect(maxHeight == 982 - 70 - NotchLayout.scheduleScreenMargin)
+        #expect(NotchLayout.scheduleScreenMargin > NotchLayout.overshootPadding, "the canvas' overshoot room stays on screen")
+        // Hidden Dock: the whole height below the top edge.
+        #expect(NotchLayout.maxPanelHeight(screenFrame: screen, visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 944))
+                == 982 - NotchLayout.scheduleScreenMargin)
+        // Secondary display above the main one (non-zero origin).
+        let upper = CGRect(x: 0, y: 982, width: 1920, height: 1080)
+        #expect(NotchLayout.maxPanelHeight(screenFrame: upper, visibleFrame: CGRect(x: 0, y: 982, width: 1920, height: 1055))
+                == 1080 - NotchLayout.scheduleScreenMargin)
+    }
+
+    @Test func clickAboveTheSectionCancelsScheduling() {
+        let top = NotchLayout.scheduleSectionTop(notchBandHeight: 39, textScale: 1)
+        #expect(top == 39 + NotchLayout.topContentHeight(textScale: 1))
+        #expect(NotchLayout.clickCancelsSchedule(atY: top - 30, sectionTop: top, schedule: .controls), "title row")
+        #expect(NotchLayout.clickCancelsSchedule(atY: 60, sectionTop: top, schedule: .calendar), "header")
+        #expect(!NotchLayout.clickCancelsSchedule(atY: top + 1, sectionTop: top, schedule: .controls), "inside the section")
+        #expect(!NotchLayout.clickCancelsSchedule(atY: top - 30, sectionTop: top, schedule: .none), "nothing to cancel")
+    }
 }

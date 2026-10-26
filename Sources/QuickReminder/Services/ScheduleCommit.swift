@@ -31,6 +31,21 @@ enum ScheduleCommit {
         case clear
     }
 
+    /// What ↩ / ⌘↩ in the title or notes does.
+    enum TextRowSubmit: Equatable {
+        /// The in-notch Set Date section is open: Set (commit its draft, close it). Never a save,
+        /// never a beep.
+        case setSchedule
+        case saveReminder
+        /// Empty title, nothing to do.
+        case none
+    }
+
+    static func textRowSubmit(schedulingInNotch: Bool, canSave: Bool) -> TextRowSubmit {
+        if schedulingInNotch { return .setSchedule }
+        return canSave ? .saveReminder : .none
+    }
+
     /// The date Set writes: the typed phrase when it parses, otherwise the draft the controls
     /// built. nil = invalid text (beep, stay open).
     static func dateToSet(for result: ScheduleInput.Result, draft: Date) -> Date? {

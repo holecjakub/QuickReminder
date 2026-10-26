@@ -92,12 +92,37 @@ enum NotchLayout {
                       height: notchBandHeight + contentHeight(textScale: s))
     }
 
-    /// Open panel size with the in-notch Set Date section at `schedule` (`.none` = the plain panel).
-    @MainActor static func openSize(notchBandHeight: CGFloat, schedule: ScheduleExpansion) -> CGSize {
+    /// Open panel size with the in-notch Set Date section at `schedule` (`.none` = the plain panel),
+    /// never taller than `maxHeight` (see `maxPanelHeight`) and never shorter than the plain
+    /// panel. When clamped, the section's rows scroll between the fixed title and footer.
+    @MainActor static func openSize(notchBandHeight: CGFloat, schedule: ScheduleExpansion,
+                                    maxHeight: CGFloat = .infinity) -> CGSize {
         let plain = openSize(notchBandHeight: notchBandHeight)
         guard schedule != .none else { return plain }
-        return CGSize(width: plain.width,
-                      height: notchBandHeight + scheduleContentHeight(textScale: textScale, calendar: schedule == .calendar))
+        let natural = notchBandHeight + scheduleContentHeight(textScale: textScale, calendar: schedule == .calendar)
+        return CGSize(width: plain.width, height: max(plain.height, min(natural, maxHeight.rounded(.down))))
+    }
+
+    /// Room below the grown panel: the spring's overshoot (`overshootPadding`) plus a little air
+    /// above the Dock / the bottom of the screen.
+    static let scheduleScreenMargin: CGFloat = overshootPadding + 16
+
+    /// The tallest the open panel may grow on a screen: from the top edge (the panel covers the
+    /// menu bar) down to the top of the visible area (above the Dock), minus the margin.
+    static func maxPanelHeight(screenFrame: CGRect, visibleFrame: CGRect) -> CGFloat {
+        screenFrame.maxY - visibleFrame.minY - scheduleScreenMargin
+    }
+
+    /// Where the in-notch Set Date section starts, from the top of the panel (hosting view, top-down).
+    @MainActor static func scheduleSectionTop(notchBandHeight: CGFloat, textScale s: CGFloat) -> CGFloat {
+        notchBandHeight + topContentHeight(textScale: s)
+    }
+
+    /// A click inside the open panel above the section (header, title, notes) cancels scheduling,
+    /// like a click outside the popover; the click still reaches what it landed on. The section's
+    /// full width counts as inside, so a near miss beside a control does not cancel.
+    static func clickCancelsSchedule(atY y: CGFloat, sectionTop: CGFloat, schedule: ScheduleExpansion) -> Bool {
+        schedule != .none && y < sectionTop
     }
 
     /// Vertical rhythm of the open content below the notch band (SPEC §4) at text scale `s`.

@@ -26,6 +26,15 @@ enum ScheduleExpansion: Hashable, Sendable {
     case none
     case controls
     case calendar
+
+    /// Esc steps back one level: the month grid closes first (the blob shrinks to the controls),
+    /// the next Esc closes the section; the panel stays open either way.
+    var afterEscape: ScheduleExpansion {
+        switch self {
+        case .calendar: return .controls
+        case .controls, .none: return .none
+        }
+    }
 }
 
 /// Inputs: public API calls, pointer events and expired timers.

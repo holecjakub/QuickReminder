@@ -125,4 +125,17 @@ struct NotchMachineScheduleTests {
         #expect(effects == [.configureGeometry, .relayoutOpenWindow])
         #expect(m.schedule == .calendar)
     }
+
+    /// Esc steps back one level; the panel itself is never closed by these steps.
+    @Test func escapeStepsBackOneLevel() {
+        #expect(ScheduleExpansion.calendar.afterEscape == .controls)
+        #expect(ScheduleExpansion.controls.afterEscape == .none)
+        #expect(ScheduleExpansion.none.afterEscape == .none)
+        var m = Self.openMachine()
+        _ = m.handle(.scheduleChanged(.calendar))
+        _ = m.handle(.scheduleChanged(m.schedule.afterEscape))
+        #expect(m.schedule == .controls && m.phase == .open)
+        _ = m.handle(.scheduleChanged(m.schedule.afterEscape))
+        #expect(m.schedule == .none && m.phase == .open)
+    }
 }

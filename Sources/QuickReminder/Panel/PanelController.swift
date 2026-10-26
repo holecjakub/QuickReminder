@@ -366,9 +366,11 @@ final class PanelController {
         let band = state.closedSize.height
         let open = NotchLayout.openSize(notchBandHeight: band)
         if state.openSize != open { state.openSize = open }
-        let schedule = NotchLayout.openSize(notchBandHeight: band, schedule: .controls)
+        // The grown states stop short of the Dock / screen bottom; the section scrolls instead.
+        let maxHeight = NotchLayout.maxPanelHeight(screenFrame: screen.frame, visibleFrame: screen.visibleFrame)
+        let schedule = NotchLayout.openSize(notchBandHeight: band, schedule: .controls, maxHeight: maxHeight)
         if state.scheduleSize != schedule { state.scheduleSize = schedule }
-        let calendar = NotchLayout.openSize(notchBandHeight: band, schedule: .calendar)
+        let calendar = NotchLayout.openSize(notchBandHeight: band, schedule: .calendar, maxHeight: maxHeight)
         if state.scheduleCalendarSize != calendar { state.scheduleCalendarSize = calendar }
     }
 
@@ -507,6 +509,15 @@ final class PanelController {
                     self.hide()
                     return nil
                 }
+                // In-notch Set Date: a click on the header / title / notes cancels scheduling (like a
+                // click outside the popover) and still lands where it was aimed.
+                let topDown = hosting.isFlipped ? point.y : hosting.bounds.maxY - point.y
+                let sectionTop = NotchLayout.scheduleSectionTop(notchBandHeight: self.state.notchBandHeight,
+                                                                textScale: NotchLayout.cachedTextScale)
+                if event.type == .leftMouseDown,
+                   NotchLayout.clickCancelsSchedule(atY: topDown, sectionTop: sectionTop, schedule: self.state.schedule) {
+                    NotificationCenter.default.post(name: .panelCancelSchedule, object: nil)
+                }
             }
             return event
         }
@@ -548,4 +559,8 @@ extension Notification.Name {
     static let panelDidHide = Notification.Name("PanelDidHide")
     /// Esc while a popover (list picker, Set Date, location) is shown: close it, keep the panel.
     static let panelDismissPopovers = Notification.Name("PanelDismissPopovers")
+    /// A click on the panel above the in-notch Set Date section: cancel it (nothing written).
+    static let panelCancelSchedule = Notification.Name("PanelCancelSchedule")
+    /// ↩ / ⌘↩ in the title or notes while the in-notch section is open: Set, not save.
+    static let scheduleCommitRequested = Notification.Name("ScheduleCommitRequested")
 }

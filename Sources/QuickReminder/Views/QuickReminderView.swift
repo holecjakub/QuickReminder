@@ -27,6 +27,9 @@ struct QuickReminderView: View {
     @State private var saveErrorText: String? = nil
     @State private var suggestion: DateSuggestion? = nil
     @State private var dismissedSuggestionText: String? = nil
+    /// The preset that wrote `dueDate`, if one did: Set Date highlights it rather than every preset
+    /// landing on the same minute (`DatePreset.highlighted`).
+    @State private var presetPick: PresetPick? = nil
 
 
     @Environment(\.listAccent) private var accent
@@ -55,7 +58,7 @@ struct QuickReminderView: View {
             InputView(
                 title: $title,
                 notes: $notes,
-                onSubmit: { if canSave { saveReminder() } },
+                onSubmit: submitFromTextRow,
                 onTab: { applySuggestionIfAny() }
             )
             .padding(.top, 10)
@@ -64,6 +67,7 @@ struct QuickReminderView: View {
                 ScheduleNotchSection(
                     selectedDate: $dueDate,
                     isPresented: $showCustomDatePicker,
+                    presetPick: $presetPick,
                     accent: accent,
                     initialText: dueDate == nil ? suggestion?.matchedText : nil,
                     onConsumeSuggestion: stripSuggestionPhrase,
@@ -72,6 +76,9 @@ struct QuickReminderView: View {
                         PanelController.shared.setSchedule(notch.schedule == .calendar ? .controls : .calendar)
                     }
                 )
+                // Takes the rest of the panel; its rows scroll when the screen clamps the height.
+                .frame(maxHeight: .infinity, alignment: .top)
+                .padding(.bottom, Theme.horizontalPadding)
                 // The section's rows stagger in themselves; leaving, it fades quicker than it came.
                 .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.12)),
                                         removal: .opacity.animation(.easeOut(duration: 0.1))))
@@ -99,7 +106,15 @@ struct QuickReminderView: View {
         .onReceive(NotificationCenter.default.publisher(for: .panelDismissPopovers)) { _ in
             showListPicker = false
             showLocationField = false
-            showCustomDatePicker = false
+            // In-notch Set Date steps back one level per Esc: calendar → controls → closed.
+            if schedulingInNotch, notch.schedule.afterEscape != .none {
+                PanelController.shared.setSchedule(notch.schedule.afterEscape)
+            } else {
+                showCustomDatePicker = false
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .panelCancelSchedule)) { _ in
+            if schedulingInNotch { showCustomDatePicker = false }
         }
         .onChange(of: anyPopoverShown) { _, shown in
             PanelController.shared.popoverIsOpen = shown
@@ -153,6 +168,7 @@ struct QuickReminderView: View {
                 showLocationField: $showLocationField,
                 showCustomDatePicker: $showCustomDatePicker,
                 presentsPopover: pickerStyle == .popover,
+                presetPick: $presetPick,
                 suggestionText: suggestion?.matchedText,
                 onConsumeSuggestion: stripSuggestionPhrase,
                 saveNamespace: saveNamespace,
@@ -279,11 +295,22 @@ struct QuickReminderView: View {
         .padding(.leading, Theme.s(21) + 10)
     }
 
+    /// ↩ in the title or notes: Set while the in-notch section is open, otherwise save.
+    private func submitFromTextRow() {
+        switch ScheduleCommit.textRowSubmit(schedulingInNotch: schedulingInNotch, canSave: canSave) {
+        case .setSchedule: NotificationCenter.default.post(name: .scheduleCommitRequested, object: nil)
+        case .saveReminder: saveReminder()
+        case .none: break
+        }
+    }
+
     private func saveReminder() {
         guard !saveButtonYielded else { return }   // already saved; the ✓ is flying
-        // In-notch Set Date open: ↩ in the title must not save past an unset draft (the ✓ is
-        // hidden too); Set or Cancel first.
-        guard !schedulingInNotch else { NSSound.beep(); return }
+        // In-notch Set Date open: ↩ / ⌘↩ mean Set (commit the draft, close the section), never save.
+        guard !schedulingInNotch else {
+            NotificationCenter.default.post(name: .scheduleCommitRequested, object: nil)
+            return
+        }
         // Like iOS Reminders: an un-dismissed date phrase is applied automatically on save.
         if dueDate == nil, suggestion != nil { applySuggestionIfAny() }
         let trimmedTitle = title.trimmingCharacters(in: .whitespaces)
@@ -318,5 +345,6 @@ struct QuickReminderView: View {
         saveErrorText = nil
         suggestion = nil
         dismissedSuggestionText = nil
+        presetPick = nil
     }
 }

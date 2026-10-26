@@ -13,6 +13,8 @@ struct BottomBar: View {
     @Binding var showCustomDatePicker: Bool
     /// Set Date opens as a popover (Settings → Date picker style); otherwise the notch grows instead.
     let presentsPopover: Bool
+    /// Which preset wrote the date (menu presets and the popover record it).
+    @Binding var presetPick: PresetPick?
     /// The title's live, undismissed date phrase: prefilled into the Set Date popover.
     let suggestionText: String?
     /// Strips that phrase from the title once the popover commits it.
@@ -100,7 +102,9 @@ struct BottomBar: View {
                 return .action(DatePreset.menuTitle(for: preset, now: now),
                                systemImage: DatePreset.systemImage(for: preset),
                                detail: Self.dateFormatter.presetDetail(date, now: now)) {
-                    dueDate = DatePreset.date(for: preset, now: AppClock.now)
+                    let date = DatePreset.date(for: preset, now: AppClock.now)
+                    dueDate = date
+                    presetPick = PresetPick(preset: preset, date: date)
                     consumeLiveSuggestion()
                 }
             }
@@ -125,6 +129,7 @@ struct BottomBar: View {
             SchedulePopover(
                 selectedDate: $dueDate,
                 isPresented: $showCustomDatePicker,
+                presetPick: $presetPick,
                 accent: accent,
                 initialText: dueDate == nil ? suggestionText : nil,
                 onConsumeSuggestion: onConsumeSuggestion

@@ -10,6 +10,8 @@ import SwiftUI
 struct SchedulePopover: View {
     @Binding var selectedDate: Date?
     @Binding var isPresented: Bool
+    /// Which preset wrote the date; Set Date highlights only that one (`DatePreset.highlighted`).
+    @Binding var presetPick: PresetPick?
     let accent: Color
     /// The live, undismissed title suggestion phrase ("zítra ve 2"), prefilled into the field.
     let initialText: String?
@@ -39,10 +41,11 @@ struct SchedulePopover: View {
     private static let placeholder = ScheduleText.placeholder
     private static var invalidExample: String { ScheduleText.invalidExample }
 
-    init(selectedDate: Binding<Date?>, isPresented: Binding<Bool>, accent: Color,
+    init(selectedDate: Binding<Date?>, isPresented: Binding<Bool>, presetPick: Binding<PresetPick?>, accent: Color,
          initialText: String?, onConsumeSuggestion: @escaping () -> Void) {
         _selectedDate = selectedDate
         _isPresented = isPresented
+        _presetPick = presetPick
         self.accent = accent
         self.initialText = initialText
         self.onConsumeSuggestion = onConsumeSuggestion
@@ -131,10 +134,10 @@ struct SchedulePopover: View {
             } else if draft < now {
                 Image(systemName: "exclamationmark.triangle")
                 Text("In the past")
-                Text("· " + Self.formatter.string(from: draft, hasTime: true))
+                Text("· " + Self.formatter.dayAndTime(draft))
                     .foregroundStyle(.white.opacity(0.45))
             } else {
-                Text(Self.formatter.string(from: draft, hasTime: true))
+                Text(Self.formatter.dayAndTime(draft))
                     .foregroundStyle(accent)
                 Text("· " + Self.relative.localizedString(for: draft, relativeTo: now))
                     .foregroundStyle(.white.opacity(0.45))
@@ -151,7 +154,7 @@ struct SchedulePopover: View {
 
     private func previewSpoken(now: Date) -> String {
         if isInvalid { return "Not a date" }
-        let date = Self.formatter.string(from: draft, hasTime: true)
+        let date = Self.formatter.dayAndTime(draft)
         return draft < now ? "In the past, \(date)" : date
     }
 
@@ -171,19 +174,21 @@ struct SchedulePopover: View {
 
     private var presetGrid: some View {
         let now = AppClock.now
+        // Only one card lights up even when several presets land on the same minute.
+        let highlighted = DatePreset.highlighted(for: draft, picked: presetPick, now: now)
         let columns = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
         return LazyVGrid(columns: columns, spacing: 8) {
             ForEach(Array(DatePreset.allCases.enumerated()), id: \.element) { index, preset in
-                presetCard(preset, number: index + 1, now: now)
+                presetCard(preset, number: index + 1, now: now, highlighted: highlighted)
             }
         }
     }
 
-    private func presetCard(_ preset: DatePreset, number: Int, now: Date) -> some View {
+    private func presetCard(_ preset: DatePreset, number: Int, now: Date, highlighted: DatePreset?) -> some View {
         let date = DatePreset.date(for: preset, now: now)
         let title = DatePreset.title(for: preset, now: now)
         let detail = Self.formatter.presetDetail(date, now: now)
-        let selected = Calendar.current.compare(date, to: draft, toGranularity: .minute) == .orderedSame
+        let selected = preset == highlighted
         return Button { apply(preset) } label: {
             HStack(alignment: .center, spacing: 8) {
                 Image(systemName: DatePreset.systemImage(for: preset))
@@ -315,6 +320,7 @@ struct SchedulePopover: View {
             if selectedDate != nil {
                 Button("Clear") {
                     selectedDate = nil
+                    presetPick = nil
                     isPresented = false
                 }
                 .buttonStyle(.plain)
@@ -351,12 +357,15 @@ struct SchedulePopover: View {
             return
         }
         draft = date
+        presetPick = nil   // typed / manual: the highlight falls back to the first matching preset
         finish(with: date, action: .set)
     }
 
     private func apply(_ preset: DatePreset) {
         guard !committed else { return }
-        finish(with: DatePreset.date(for: preset, now: AppClock.now), action: .preset)
+        let date = DatePreset.date(for: preset, now: AppClock.now)
+        presetPick = PresetPick(preset: preset, date: date)
+        finish(with: date, action: .preset)
     }
 
     private func finish(with date: Date, action: ScheduleCommit.Action) {

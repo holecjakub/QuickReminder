@@ -63,3 +63,14 @@ struct ScheduleOpeningTests {
         #expect(opening.text == "zítra prosím")
     }
 }
+
+struct TextRowSubmitTests {
+    /// With the in-notch section open, ↩ in the title / notes is Set — even with an empty title
+    /// (nothing to save) and never a save while a draft is pending.
+    @Test func returnInTheTitleIsSetWhileSchedulingInTheNotch() {
+        #expect(ScheduleCommit.textRowSubmit(schedulingInNotch: true, canSave: true) == .setSchedule)
+        #expect(ScheduleCommit.textRowSubmit(schedulingInNotch: true, canSave: false) == .setSchedule)
+        #expect(ScheduleCommit.textRowSubmit(schedulingInNotch: false, canSave: true) == .saveReminder)
+        #expect(ScheduleCommit.textRowSubmit(schedulingInNotch: false, canSave: false) == .none)
+    }
+}

@@ -16,6 +16,8 @@ import SwiftUI
 struct ScheduleNotchSection: View {
     @Binding var selectedDate: Date?
     @Binding var isPresented: Bool
+    /// Which preset wrote the date; Set Date highlights only that one (`DatePreset.highlighted`).
+    @Binding var presetPick: PresetPick?
     let accent: Color
     /// The live, undismissed title suggestion phrase, prefilled into the field.
     let initialText: String?
@@ -46,10 +48,11 @@ struct ScheduleNotchSection: View {
         return formatter
     }()
 
-    init(selectedDate: Binding<Date?>, isPresented: Binding<Bool>, accent: Color, initialText: String?,
+    init(selectedDate: Binding<Date?>, isPresented: Binding<Bool>, presetPick: Binding<PresetPick?>, accent: Color, initialText: String?,
          onConsumeSuggestion: @escaping () -> Void, showsCalendar: Bool, onToggleCalendar: @escaping () -> Void) {
         _selectedDate = selectedDate
         _isPresented = isPresented
+        _presetPick = presetPick
         self.accent = accent
         self.initialText = initialText
         self.onConsumeSuggestion = onConsumeSuggestion
@@ -64,6 +67,60 @@ struct ScheduleNotchSection: View {
     private var isInvalid: Bool { parsed == .invalid }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // The rows scroll only when the screen clamps the panel (`NotchLayout.maxPanelHeight`);
+            // otherwise the panel is exactly as tall as they are and nothing moves. Footer pinned.
+            ScrollViewReader { proxy in
+                ScrollView(.vertical) {
+                    rows
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .onChange(of: showsCalendar) { _, shown in
+                    guard shown else { return }
+                    // Clamped: bring the grid into view as it opens (a no-op when everything fits).
+                    DispatchQueue.main.async {
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo(Self.calendarID, anchor: .bottom) }
+                    }
+                }
+            }
+            footer
+                .padding(.top, M.footerGap)
+                .staggered(3, appeared: appeared, reduceMotion: reduceMotion)
+        }
+        .tint(accent)
+        .background(commandReturnTwin)
+        .background(calendarShortcut)
+        .onReceive(NotificationCenter.default.publisher(for: .scheduleCommitRequested)) { _ in commit() }
+        .onChange(of: text) { _, newValue in
+            if case let .date(date) = parsed { draft = date }
+            announcePreview(for: newValue)
+        }
+        .onChange(of: draft) { _, _ in if focus != .time { syncTimeText() } }
+        .onChange(of: focus) { old, new in
+            if old == .time && new != .time { applyTypedTime(beepOnInvalid: false) }
+        }
+        .onChange(of: showsCalendar) { _, shown in
+            if shown {
+                DispatchQueue.main.async { focus = .calendar }
+            } else if focus == .calendar || focus == nil {
+                // The focused grid just left the hierarchy; hand the keys back to the field.
+                DispatchQueue.main.async { focus = .text }
+            }
+        }
+        .onAppear {
+            syncTimeText()
+            appeared = true
+            DispatchQueue.main.async { focus = .text }
+        }
+        .onDisappear { announcement?.cancel() }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Set Date")
+    }
+
+    private static let calendarID = "calendar"
+
+    /// Everything above the footer: field, preview, presets, day + time, and the month grid.
+    private var rows: some View {
         VStack(alignment: .leading, spacing: 0) {
             typeField
                 .padding(.top, M.topGap)
@@ -92,41 +149,13 @@ struct ScheduleNotchSection: View {
                 .onKeyPress(.upArrow) { moveDay(-7) }
                 .onKeyPress(.downArrow) { moveDay(7) }
                 .padding(.top, M.calendarGap)
+                .id(Self.calendarID)
                 .transition(reduceMotion
                     ? AnyTransition.opacity
                     : AnyTransition.opacity.combined(with: .offset(y: -8)))
             }
-            footer
-                .padding(.top, M.footerGap)
-                .staggered(3, appeared: appeared, reduceMotion: reduceMotion)
         }
-        .tint(accent)
-        .background(commandReturnTwin)
-        .background(calendarShortcut)
-        .onChange(of: text) { _, newValue in
-            if case let .date(date) = parsed { draft = date }
-            announcePreview(for: newValue)
-        }
-        .onChange(of: draft) { _, _ in if focus != .time { syncTimeText() } }
-        .onChange(of: focus) { old, new in
-            if old == .time && new != .time { applyTypedTime(beepOnInvalid: false) }
-        }
-        .onChange(of: showsCalendar) { _, shown in
-            if shown {
-                DispatchQueue.main.async { focus = .calendar }
-            } else if focus == .calendar || focus == nil {
-                // The focused grid just left the hierarchy; hand the keys back to the field.
-                DispatchQueue.main.async { focus = .text }
-            }
-        }
-        .onAppear {
-            syncTimeText()
-            appeared = true
-            DispatchQueue.main.async { focus = .text }
-        }
-        .onDisappear { announcement?.cancel() }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Set Date")
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: Type field
@@ -176,10 +205,10 @@ struct ScheduleNotchSection: View {
             } else if draft < now {
                 Image(systemName: "exclamationmark.triangle.fill")
                 Text("In the past")
-                Text("· " + Self.formatter.string(from: draft, hasTime: true))
+                Text("· " + Self.formatter.dayAndTime(draft))
                     .foregroundStyle(.white.opacity(0.45))
             } else {
-                Text(Self.formatter.string(from: draft, hasTime: true))
+                Text(Self.formatter.dayAndTime(draft))
                     .foregroundStyle(.white)
                 Text("· " + Self.relative.localizedString(for: draft, relativeTo: now))
                     .foregroundStyle(.white.opacity(0.45))
@@ -197,7 +226,7 @@ struct ScheduleNotchSection: View {
 
     private func previewSpoken(now: Date) -> String {
         if isInvalid { return "Not a date" }
-        let date = Self.formatter.string(from: draft, hasTime: true)
+        let date = Self.formatter.dayAndTime(draft)
         return draft < now ? "In the past, \(date)" : date
     }
 
@@ -217,19 +246,21 @@ struct ScheduleNotchSection: View {
 
     private var presetGrid: some View {
         let now = AppClock.now
+        // Only one card lights up even when several presets land on the same minute.
+        let highlighted = DatePreset.highlighted(for: draft, picked: presetPick, now: now)
         let columns = Array(repeating: GridItem(.flexible(), spacing: M.presetSpacing), count: 3)
         return LazyVGrid(columns: columns, spacing: M.presetSpacing) {
             ForEach(Array(DatePreset.allCases.enumerated()), id: \.element) { index, preset in
-                presetCard(preset, number: index + 1, now: now)
+                presetCard(preset, number: index + 1, now: now, highlighted: highlighted)
             }
         }
     }
 
-    private func presetCard(_ preset: DatePreset, number: Int, now: Date) -> some View {
+    private func presetCard(_ preset: DatePreset, number: Int, now: Date, highlighted: DatePreset?) -> some View {
         let date = DatePreset.date(for: preset, now: now)
         let title = DatePreset.title(for: preset, now: now)
         let detail = Self.formatter.presetDetail(date, now: now)
-        let selected = Calendar.current.compare(date, to: draft, toGranularity: .minute) == .orderedSame
+        let selected = preset == highlighted
         return Button { apply(preset) } label: {
             HStack(alignment: .center, spacing: 9) {
                 Image(systemName: DatePreset.systemImage(for: preset))
@@ -395,6 +426,7 @@ struct ScheduleNotchSection: View {
             if selectedDate != nil {
                 Button("Clear") {
                     selectedDate = nil
+                    presetPick = nil
                     isPresented = false
                 }
                 .buttonStyle(NotchTextButtonStyle())
@@ -455,12 +487,15 @@ struct ScheduleNotchSection: View {
             return
         }
         draft = date
+        presetPick = nil   // typed / manual: the highlight falls back to the first matching preset
         finish(with: date, action: .set)
     }
 
     private func apply(_ preset: DatePreset) {
         guard !committed else { return }
-        finish(with: DatePreset.date(for: preset, now: AppClock.now), action: .preset)
+        let date = DatePreset.date(for: preset, now: AppClock.now)
+        presetPick = PresetPick(preset: preset, date: date)
+        finish(with: date, action: .preset)
     }
 
     private func finish(with date: Date, action: ScheduleCommit.Action) {
