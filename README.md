@@ -41,6 +41,7 @@ Scripts/test.sh    # same, with a one-line pass/fail summary; passes extra args 
 | Location icon | Add a location note (appended to Notes as 📍 …) |
 | Flag icon | Toggle flagged (orange) — stored as High priority, EventKit exposes no flag |
 | `open quickreminder://show` (`hide`, `toggle`) | Same actions from Shortcuts, Raycast, scripts |
+| Raycast / Spotlight: “Quick Reminder” | Opening the app (running or not) opens the panel. For a “Quick Reminder” command in Raycast, add `Scripts/raycast/` under Raycast → Settings → Extensions → Script Commands. |
 
 Menu bar icon → **Settings…** to launch at login, change the hotkey (needs ⌘, ⌃ or ⌥) or pick the default list. The app asks for Reminders access on first launch (System Settings → Privacy & Security → Reminders if you need to re-enable it).
 

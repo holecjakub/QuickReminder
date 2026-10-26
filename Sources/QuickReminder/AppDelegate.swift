@@ -4,6 +4,12 @@ import Carbon
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
+    /// The launch event is only current while launching finishes; read it before it is gone.
+    private var launchedInteractively = false
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        launchedInteractively = Self.isInteractiveLaunch(NSAppleEventManager.shared().currentAppleEvent)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMenuBar()
@@ -11,6 +17,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Create the controller now so its global click monitor (click-on-notch) is live from launch.
         _ = PanelController.shared
         Task { await RemindersService.shared.requestAccess() }
+        // Launched by hand (Raycast, Spotlight, Finder, Dock) → open the panel straight away, as a
+        // relaunch of the running app does. Login-item and URL-scheme launches stay silent: they
+        // carry no plain "open application" event, or one flagged as a login-item launch.
+        if launchedInteractively {
+            DispatchQueue.main.async { PanelController.shared.show() }
+        }
+    }
+
+    /// Raycast / Spotlight "open" on the already-running accessory app arrives as a reopen
+    /// (there are no windows to bring forward), so it opens the panel instead.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        PanelController.shared.show()
+        return false
+    }
+
+    nonisolated static func isInteractiveLaunch(_ event: NSAppleEventDescriptor?) -> Bool {
+        guard let event,
+              event.eventClass == AEEventClass(kCoreEventClass),
+              event.eventID == AEEventID(kAEOpenApplication) else { return false }
+        let launchType = event.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue
+        return launchType != OSType(keyAELaunchedAsLogInItem)
     }
 
     private func setupMenuBar() {
