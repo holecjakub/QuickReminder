@@ -5,8 +5,8 @@ import Foundation
 struct DateSuggestion: Equatable, Sendable {
     /// The resolved absolute date/time.
     let date: Date
-    /// `false` when only a day was recognised — the caller is expected to apply its own
-    /// default time of day (9:00) in that case.
+    /// `false` when only a day was recognised — the caller applies the shared default
+    /// (`ScheduleDefaults.resolveDayOnly`, 9:00) in that case.
     let hasTime: Bool
     /// Range of the phrase inside the ORIGINAL text.
     let matchedRange: Range<String.Index>
@@ -334,20 +334,20 @@ enum NaturalDateParser {
     ]
 
     private static let dayPartTimes: [String: TimeInfo] = [
-        "rano": TimeInfo(hour: 9, minute: 0),
+        "rano": TimeInfo(hour: DayPart.morningHour, minute: 0),
         "dopoledne": TimeInfo(hour: 10, minute: 0),
         "poledne": TimeInfo(hour: 12, minute: 0),
-        "odpoledne": TimeInfo(hour: 15, minute: 0),
-        "vecer": TimeInfo(hour: 19, minute: 0),
-        "vecera": TimeInfo(hour: 19, minute: 0),
+        "odpoledne": TimeInfo(hour: DayPart.afternoonHour, minute: 0),
+        "vecer": TimeInfo(hour: DayPart.eveningHour, minute: 0),
+        "vecera": TimeInfo(hour: DayPart.eveningHour, minute: 0),
         "pulnoc": TimeInfo(hour: 0, minute: 0),
         "pulnoci": TimeInfo(hour: 0, minute: 0),
         "noon": TimeInfo(hour: 12, minute: 0),
         "midnight": TimeInfo(hour: 0, minute: 0),
-        "morning": TimeInfo(hour: 9, minute: 0),
-        "afternoon": TimeInfo(hour: 15, minute: 0),
-        "evening": TimeInfo(hour: 19, minute: 0),
-        "night": TimeInfo(hour: 20, minute: 0)
+        "morning": TimeInfo(hour: DayPart.morningHour, minute: 0),
+        "afternoon": TimeInfo(hour: DayPart.afternoonHour, minute: 0),
+        "evening": TimeInfo(hour: DayPart.eveningHour, minute: 0),
+        "night": TimeInfo(hour: DayPart.nightHour, minute: 0)
     ]
 
     // MARK: - Compiled patterns
@@ -525,7 +525,7 @@ enum NaturalDateParser {
             return DayInfo(startOfDay: shifted(1), impliedTime: nil)
         }
         if phrase.contains("tonight") {
-            return DayInfo(startOfDay: today, impliedTime: TimeInfo(hour: 20, minute: 0))
+            return DayInfo(startOfDay: today, impliedTime: TimeInfo(hour: DayPart.nightHour, minute: 0))
         }
         if phrase.contains("today") || phrase.contains("dnes") {
             return DayInfo(startOfDay: today, impliedTime: nil)
@@ -533,12 +533,9 @@ enum NaturalDateParser {
         return nil
     }
 
+    /// Shared with the presets (`DatePreset.nextWeekday`) so "next week" and Next Week agree.
     private static func nextWeekday(_ weekday: Int, after now: Date, calendar: Calendar) -> Date {
-        let today = calendar.startOfDay(for: now)
-        let current = calendar.component(.weekday, from: today)
-        var delta = (weekday - current + 7) % 7
-        if delta == 0 { delta = 7 }
-        return calendar.date(byAdding: .day, value: delta, to: today) ?? today
+        DatePreset.nextWeekday(weekday, after: now, calendar: calendar)
     }
 
     /// How far ahead a day/month with no year may look for a valid occurrence — enough to reach
@@ -630,7 +627,8 @@ enum NaturalDateParser {
     }
 
     /// Hours 1…6 without am/pm are read as the afternoon; 0 and 7…23 are taken literally.
-    private static func disambiguate(_ hour: Int) -> Int {
+    /// Internal so the popover's bare-number leniency (`ScheduleInput`) reads hours the same way.
+    static func disambiguate(_ hour: Int) -> Int {
         (1...6).contains(hour) ? hour + 12 : hour
     }
 

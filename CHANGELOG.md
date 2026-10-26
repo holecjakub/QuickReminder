@@ -4,6 +4,15 @@ All notable changes to QuickReminder. Format: [Keep a Changelog](https://keepach
 
 ## Unreleased
 
+## 0.4.0
+
+- **No more analog clock.** Remind Me Later… opened a graphical picker whose time had to be set by dragging clock hands. It is replaced by a Set Date popover (`⌘D`, Custom… in the calendar menu, or a click on the date chip): type a date (“zítra 14:00”, “fri 2pm”, “14”, “1430”, “+2h”), pick one of six presets (`⌘1`…`⌘6`, one click), or set the day and type the time (9/12/15/19 chips, a date-only calendar behind `⌘K`). Nothing changes until Set; Esc or a click outside cancels and leaves the panel open. The title's live date suggestion is prefilled.
+- The calendar menu shows what each row resolves to (“This Weekend  so 9:00”) and gains This Evening, This Weekend and Next Week; rows keep their positions (labels adapt, e.g. “Tomorrow Evening” after 18:30).
+- **Behaviour change:** a day-only date for today after 9:00 (“today”, “dnes”) now lands on the next :00 or :30 at least 15 minutes ahead instead of the next full hour. Tab, typing and presets share this rule (`ScheduleDefaults`).
+- Dev: `QR_NOW=2026-10-23T10:00` pins the app's clock for screenshots and E2E; four new E2E scenarios (`date_menu_preset`, `schedule_popover_typed`, `schedule_popover_preset_shortcut`, `schedule_popover_esc`).
+- Set Date review fixes: preset details and the Set button show the date from a week out (“Nov 1 at 9:00 AM”; Next Month on a Saturday read “Sun 9:00”, like Tomorrow); the title's date phrase is stripped whenever a date opened from it is set, also after editing the text, using the controls or a preset (it used to stay in the title); `15.11` / `24.12` / `1.12` are dates, not 15:11 or “Not a date”; VoiceOver announces the typed preview and names the calendar and time chips; closing the calendar with `⌘K` returns focus to the field; 12/24-hour changes apply without a relaunch; the invalid hint suggests an English example in English (“tomorrow 2pm”) and the placeholder fits the field.
+- Esc while a popover (list picker, Set Date, location) is open now closes just the popover; it used to close the whole panel, because the non-activating panel stays the key window and received the Esc.
+
 ## 0.3.0
 
 - Settings… now opens a window (it silently did nothing: the SwiftUI `Settings` scene has no responder in an accessory app driven by AppKit); the app is a plain `NSApplication` entry point and the settings form lives in its own window.

@@ -29,6 +29,8 @@ struct QuickReminderView: View {
 
     @Environment(\.listAccent) private var accent
 
+    private var anyPopoverShown: Bool { showListPicker || showLocationField || showCustomDatePicker }
+
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
@@ -85,6 +87,8 @@ struct QuickReminderView: View {
                 onSave: saveReminder,
                 showLocationField: $showLocationField,
                 showCustomDatePicker: $showCustomDatePicker,
+                suggestionText: suggestion?.matchedText,
+                onConsumeSuggestion: stripSuggestionPhrase,
                 saveNamespace: saveNamespace,
                 saveButtonYielded: saveButtonYielded
             )
@@ -92,13 +96,29 @@ struct QuickReminderView: View {
         }
         .padding(.horizontal, Theme.horizontalPadding + NotchLayout.openTopRadius)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(setDateShortcut)
         .onReceive(NotificationCenter.default.publisher(for: .panelWillShow)) { _ in
+            // Belt and braces next to the locale notification: a 12/24-hour switch while the app
+            // ran shows up on the next open at the latest.
+            SuggestionDateFormatter.invalidateCache()
             resetState()
         }
         .onReceive(NotificationCenter.default.publisher(for: .panelDidHide)) { _ in
             showListPicker = false
             showLocationField = false
             showCustomDatePicker = false
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .panelDismissPopovers)) { _ in
+            showListPicker = false
+            showLocationField = false
+            showCustomDatePicker = false
+        }
+        .onChange(of: anyPopoverShown) { _, shown in
+            PanelController.shared.popoverIsOpen = shown
+        }
+        .onChange(of: showCustomDatePicker) { _, isShown in
+            // Hand the keyboard back to the panel's title row once Set Date closes.
+            if !isShown { DispatchQueue.main.async { PanelController.shared.restoreKeyFocus() } }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dueDate != nil)
         .animation(.easeOut(duration: 0.18), value: suggestion?.matchedText)
@@ -110,7 +130,7 @@ struct QuickReminderView: View {
 
     private func updateSuggestion(for text: String) {
         guard dueDate == nil else { suggestion = nil; return }
-        let minute = Date().timeIntervalSinceReferenceDate.rounded(.down) // second precision is enough
+        let minute = AppClock.now.timeIntervalSinceReferenceDate.rounded(.down) // second precision is enough
         let parsed = NaturalDateParser.parse(text, now: Date(timeIntervalSinceReferenceDate: minute))
         if let parsed, parsed.matchedText == dismissedSuggestionText {
             suggestion = nil
@@ -124,24 +144,36 @@ struct QuickReminderView: View {
     @discardableResult
     private func applySuggestionIfAny() -> Bool {
         guard let s = suggestion else { return false }
-        var date = s.date
-        if !s.hasTime {
-            let cal = Calendar.current
-            date = cal.date(bySettingHour: 9, minute: 0, second: 0, of: date) ?? date
-            // "today" after 9:00 → next full hour instead of an alarm already in the past.
-            if cal.isDateInToday(date), date < Date() {
-                date = cal.nextDate(after: Date(), matching: DateComponents(minute: 0, second: 0), matchingPolicy: .nextTime) ?? date
-            }
-        }
-        let stripped = NaturalDateParser.removingMatch(from: title, suggestion: s)
+        // Day-only phrases share the popover's and presets' rule: 9:00, or the next :00/:30 slot
+        // for "today" after 9:00.
+        let date = s.hasTime ? s.date : ScheduleDefaults.resolveDayOnly(s.date, now: AppClock.now)
         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
             dueDate = date
-            suggestion = nil
         }
+        stripSuggestionPhrase()
+        return true
+    }
+
+    /// Removes the suggestion's phrase from the title (unless that would empty it) and drops the
+    /// suggestion. Shared by Tab and by the Set Date popover committing the prefilled phrase.
+    private func stripSuggestionPhrase() {
+        guard let s = suggestion else { return }
+        let stripped = NaturalDateParser.removingMatch(from: title, suggestion: s)
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { suggestion = nil }
         if !stripped.trimmingCharacters(in: .whitespaces).isEmpty {
             title = stripped
         }
-        return true
+    }
+
+    /// ⌘D from the title or notes opens Set Date. An invisible button keeps the shortcut in
+    /// SwiftUI's key-equivalent pass (the text view does not bind ⌘D); `.hidden()` would drop it.
+    private var setDateShortcut: some View {
+        Button("") { if !saveButtonYielded { showCustomDatePicker = true } }
+            .keyboardShortcut("d", modifiers: .command)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 
     private func suggestionChip(_ s: DateSuggestion) -> some View {
@@ -186,16 +218,26 @@ struct QuickReminderView: View {
 
     private func dateChip(_ date: Date) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: "calendar")
-                .font(.system(size: Theme.s(12), weight: .medium))
-            Text(Self.suggestionFormatter.string(from: date, hasTime: true))
-                .font(.system(size: Theme.s(13), weight: .medium))
+            // Clicking the date reopens Set Date on it.
+            Button { showCustomDatePicker = true } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: Theme.s(12), weight: .medium))
+                    Text(Self.suggestionFormatter.string(from: date, hasTime: true))
+                        .font(.system(size: Theme.s(13), weight: .medium))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(HoverButtonStyle())
+            .accessibilityLabel("Change date")
+            .accessibilityValue(Self.suggestionFormatter.string(from: date, hasTime: true))
             Button { dueDate = nil } label: {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 13))
                     .foregroundStyle(.white.opacity(0.5))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Clear date")
         }
         .foregroundStyle(accent)
         .padding(.leading, Theme.s(21) + 10)

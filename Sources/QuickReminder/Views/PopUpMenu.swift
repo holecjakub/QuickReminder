@@ -7,7 +7,9 @@ import AppKit
 @MainActor
 final class PopUpMenu: NSObject {
     enum Item {
-        case action(String, systemImage: String?, () -> Void)
+        /// `detail` is drawn right-aligned in the secondary colour on the same line ("Sat 9:00");
+        /// `keyEquivalentHint` is a ⌘ + key shortcut shown at the trailing edge (e.g. "d" → ⌘D).
+        case action(String, systemImage: String?, detail: String? = nil, keyEquivalentHint: String? = nil, () -> Void)
         case separator
     }
 
@@ -26,22 +28,62 @@ final class PopUpMenu: NSObject {
     func makeMenu(_ items: [Item]) -> NSMenu {
         let menu = NSMenu()
         actions = []
+        let detailTab = Self.detailTabLocation(for: items)
         for item in items {
             switch item {
             case .separator:
                 menu.addItem(.separator())
-            case let .action(title, systemImage, handler):
+            case let .action(title, systemImage, detail, keyHint, handler):
                 let menuItem = NSMenuItem(title: title, action: #selector(menuItemSelected(_:)), keyEquivalent: "")
                 menuItem.target = self
                 menuItem.tag = actions.count
                 if let systemImage {
                     menuItem.image = NSImage(systemSymbolName: systemImage, accessibilityDescription: nil)
                 }
+                if let detail {
+                    menuItem.attributedTitle = Self.titleWithDetail(title, detail, tabLocation: detailTab)
+                    menuItem.setAccessibilityLabel("\(title), \(detail)")
+                }
+                if let keyHint {
+                    // Display (and, while the menu is open, also triggers the item); the panel
+                    // owns the real shortcut.
+                    menuItem.keyEquivalent = keyHint
+                    menuItem.keyEquivalentModifierMask = .command
+                }
                 actions.append(handler)
                 menu.addItem(menuItem)
             }
         }
         return menu
+    }
+
+    // MARK: Detail column
+
+    private static var menuFont: NSFont { NSFont.menuFont(ofSize: 0) }
+
+    /// One line, title then a right-aligned detail at a shared tab stop (a `subtitle` would add
+    /// a second line and make the menu twice as tall).
+    static func titleWithDetail(_ title: String, _ detail: String, tabLocation: CGFloat) -> NSAttributedString {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.tabStops = [NSTextTab(textAlignment: .right, location: tabLocation)]
+        let text = NSMutableAttributedString(string: title + "\t", attributes: [
+            .font: menuFont, .paragraphStyle: paragraph, .foregroundColor: NSColor.labelColor,
+        ])
+        text.append(NSAttributedString(string: detail, attributes: [
+            .font: menuFont, .paragraphStyle: paragraph, .foregroundColor: NSColor.secondaryLabelColor,
+        ]))
+        return text
+    }
+
+    /// Widest title + a gap + widest detail, so every detail ends on the same right edge.
+    static func detailTabLocation(for items: [Item]) -> CGFloat {
+        var titleWidth: CGFloat = 0, detailWidth: CGFloat = 0
+        let attributes: [NSAttributedString.Key: Any] = [.font: menuFont]
+        for case let .action(title, _, detail, _, _) in items {
+            titleWidth = max(titleWidth, (title as NSString).size(withAttributes: attributes).width)
+            if let detail { detailWidth = max(detailWidth, (detail as NSString).size(withAttributes: attributes).width) }
+        }
+        return (titleWidth + 28 + detailWidth).rounded(.up)
     }
 
     func show(_ menu: NSMenu, belowPanelAt x: CGFloat?) {
