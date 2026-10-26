@@ -4,6 +4,16 @@ All notable changes to QuickReminder. Format: [Keep a Changelog](https://keepach
 
 ## Unreleased
 
+## 0.5.0
+
+- Raycast: opening QuickReminder from Raycast (or Spotlight, Finder, the Dock) opens the panel, whether the app is running or not; it used to do nothing while running. Launch at login stays silent. `Scripts/raycast/quick-reminder.sh` adds a “Quick Reminder” Raycast Script Command.
+- The pill icons (date, location, flag) are smaller: 18 pt instead of 22 pt, in the same 38 pt hit targets.
+- **Set Date in the notch.** New setting Settings → Set Date → Date picker style: *In notch* (default) or *Popover*. In notch, `⌘D`, Custom… or the date chip grow the black panel itself instead of opening a popover: the bottom bar gives way to the Set Date controls restyled for black (type field with live preview, six presets on `⌘1`…`⌘6`, day + typed time with 9/12/15/19 chips, Clear · Cancel · Set), and `⌘K` or the day button grows it further for a month grid (arrow keys move the day). ↩ / ⌘↩ set the date, also from the title or notes; ↩ in the time field just applies the time. Esc steps back: calendar first, then the section, then the panel. A click on the header, title or notes cancels like a click outside the popover. On short screens or at large text sizes the panel stops above the Dock and the controls scroll. Reduce Motion: a plain height change and fades.
+- Set Date labels read as one format in every locale: day and time are composed instead of joined by the language's “at” (English UI with a Czech region read “24. 10. 2026 at 9:00” and “Sat 09:00” next to chips saying “9:00”). The preview reads “Saturday 24. 10. 9:00”, presets and Set “Sat 9:00”, “1. 11. 9:00”; calendar-menu details follow (“Nov 1 9:00 AM”).
+- When two presets land on the same time (Tomorrow and This Weekend on a Friday) only one card is highlighted: the one you picked, otherwise the first.
+- The Set button and the selected time chip / day stay readable on light list colours: their label turns dark when white would fall below 4.5:1 (orange, yellow, the default blue, purple).
+- Dev: one Set Date model for both styles (`ScheduleDraft`); the panel height model covers the grown states and the screen clamp (`NotchLayout.openSize(notchBandHeight:schedule:maxHeight:)`, `ScheduleMetrics`) and the state machine a schedule event, all unit-tested. `Scripts/e2e.sh --picker-style popover|notch` (default `notch`, passed to the test instance in the argument domain); new In-notch scenarios `schedule_notch_expand`, `schedule_notch_return_sets`, `schedule_notch_click_cancels`, `schedule_notch_time_return`.
+
 ## 0.4.0
 
 - **No more analog clock.** Remind Me Later… opened a graphical picker whose time had to be set by dragging clock hands. It is replaced by a Set Date popover (`⌘D`, Custom… in the calendar menu, or a click on the date chip): type a date (“zítra 14:00”, “fri 2pm”, “14”, “1430”, “+2h”), pick one of six presets (`⌘1`…`⌘6`, one click), or set the day and type the time (9/12/15/19 chips, a date-only calendar behind `⌘K`). Nothing changes until Set; Esc or a click outside cancels and leaves the panel open. The title's live date suggestion is prefilled.

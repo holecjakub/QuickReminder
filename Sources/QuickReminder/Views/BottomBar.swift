@@ -10,7 +10,12 @@ struct BottomBar: View {
     let onSave: () -> Void
 
     @Binding var showLocationField: Bool
-    @Binding var showCustomDatePicker: Bool
+    /// The Set Date popover (only ever true in the Popover style).
+    @Binding var showSchedulePopover: Bool
+    /// Custom…: opens Set Date in the current style (popover, or the notch grows).
+    let onOpenSetDate: () -> Void
+    /// Which preset wrote the date (menu presets and the popover record it).
+    @Binding var presetPick: PresetPick?
     /// The title's live, undismissed date phrase: prefilled into the Set Date popover.
     let suggestionText: String?
     /// Strips that phrase from the title once the popover commits it.
@@ -19,7 +24,7 @@ struct BottomBar: View {
     let saveButtonYielded: Bool
     @Environment(\.listAccent) private var accent
 
-    private let iconSize: CGFloat = 22
+    private let iconSize: CGFloat = 18
     private let hitSize: CGFloat = 38
 
     var body: some View {
@@ -49,7 +54,7 @@ struct BottomBar: View {
 
     /// Pill glyphs are rendered through AppKit's symbol configuration rather than SwiftUI's
     /// `Image(systemName:)`: at one point size AppKit draws the three symbols optically balanced
-    /// (measured at 22 pt: calendar.badge.clock 25.5 × 21.5, location 21 × 20, flag 20.5 × 20.5),
+    /// (measured at 22 pt: calendar.badge.clock 25.5 × 21.5, location 21 × 20, flag 20.5 × 20.5; drawn at 18 pt),
     /// whereas the SwiftUI symbol image draws the badge symbol markedly smaller. Template images
     /// take the foreground style, so active colours keep working.
     /// Only the badge symbol needs the AppKit path; `flag` / `location` stay SwiftUI symbols so
@@ -98,7 +103,9 @@ struct BottomBar: View {
                 return .action(DatePreset.menuTitle(for: preset, now: now),
                                systemImage: DatePreset.systemImage(for: preset),
                                detail: Self.dateFormatter.presetDetail(date, now: now)) {
-                    dueDate = DatePreset.date(for: preset, now: AppClock.now)
+                    let date = DatePreset.date(for: preset, now: AppClock.now)
+                    dueDate = date
+                    presetPick = PresetPick(preset: preset, date: date)
                     consumeLiveSuggestion()
                 }
             }
@@ -112,17 +119,18 @@ struct BottomBar: View {
                 },
             ] + presets + [
                 .separator,
-                .action("Custom…", systemImage: "calendar.badge.clock", keyEquivalentHint: "d") { showCustomDatePicker = true },
+                .action("Custom…", systemImage: "calendar.badge.clock", keyEquivalentHint: "d") { onOpenSetDate() },
             ], belowPanelAt: NSEvent.mouseLocation.x - 12)
         } label: {
             icon("calendar.badge.clock", active: dueDate != nil)
         }
         .buttonStyle(HoverHighlightButtonStyle())
         .accessibilityLabel("Set date and time")
-        .popover(isPresented: $showCustomDatePicker, arrowEdge: .bottom) {
+        .popover(isPresented: $showSchedulePopover, arrowEdge: .bottom) {
             SchedulePopover(
                 selectedDate: $dueDate,
-                isPresented: $showCustomDatePicker,
+                isPresented: $showSchedulePopover,
+                presetPick: $presetPick,
                 accent: accent,
                 initialText: dueDate == nil ? suggestionText : nil,
                 onConsumeSuggestion: onConsumeSuggestion

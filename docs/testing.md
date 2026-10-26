@@ -7,7 +7,9 @@ Three layers, from fastest/narrowest to slowest/widest.
 State-machine and pure-logic coverage: `NotchMachineTests`, `NotchStateTests`,
 `NotchShapeTests`, `NaturalDateParserTests`, `SuggestionDateFormatterTests`,
 `HotkeyShortcutTests`, `ScheduleDefaultsTests`, `DatePresetsTests`,
-`ScheduleInputTests`, `ScheduleCommitTests`, `PresetDetailTests`, `PopUpMenuTests` (see `Tests/QuickReminderCoreTests/`).
+`ScheduleInputTests`, `ScheduleCommitTests`, `ScheduleOpeningTests`, `PresetDetailTests`, `PopUpMenuTests`,
+`NotchMachineScheduleTests`, `MonthGridTests`, `SetDateStyleTests`, `TextRowSubmitTests`,
+`ScheduleDraftTests`, `AccentContrastTests` (see `Tests/QuickReminderCoreTests/`).
 The scheduling tests pin `now` and inject a Europe/Prague calendar (real DST
 days) and cs_CZ / en_US locales. These run
 headless, no app window, no Accessibility permission, and are what CI runs on
@@ -47,6 +49,11 @@ Scripts/e2e.sh --keep          # leave the test instance running afterwards
 Scripts/e2e.sh --with-save     # also run save_choreography (creates a REAL
                                 # reminder in your Reminders app — off by
                                 # default, run deliberately)
+Scripts/e2e.sh --picker-style popover   # Set Date style for the test instance
+                                # (-datePickerStyle in the argument domain,
+                                # nothing persisted); default notch, always
+                                # passed, so a style chosen in Settings
+                                # never leaks into a run
 ```
 
 Output is `PASS name` / `FAIL name (reason)` / `SKIP name (reason)` per
@@ -61,7 +68,21 @@ Scenarios: `hotkey_open_close`, `type_suggestion_tab`, `czech_suggestion`,
 `schedule_popover_typed` (⌘D → `zítra 14:00` → ↩ → accent chip),
 `schedule_popover_preset_shortcut` (⌘D → ⌘3 → Tomorrow chip),
 `schedule_popover_esc` (Esc closes only the popover, the panel stays open; a
-second Esc closes it), and (only with `--with-save`) `save_choreography`.
+second Esc closes it) — these three are style-agnostic and exercise whichever
+Set Date style the instance runs (`--picker-style`) —,
+`schedule_notch_expand` (In notch only: ⌘D grows the black panel below its
+normal edge, ⌘K grows it further and back, Esc with the calendar open closes
+only the calendar, the next Esc settles the blob back with the panel still
+open and the keyboard in the title), `schedule_notch_return_sets` (⌘↩ Sets
+with an empty title; then Shift-Tab towards the text rows until a typed letter
+visibly lands in the notes row — only then is ↩ pressed, so the step fails if
+the text-row routing breaks; it SKIPs when the notes row is not reached or the
+letter lands in the title, which stays empty so nothing can be saved; the
+routing itself is unit-tested in `TextRowSubmitTests`),
+`schedule_notch_click_cancels` (a click inside the section keeps it; a click
+on the title row cancels, no date chip), `schedule_notch_time_return` (↩ in
+the time field applies the time and keeps the section open; ⌘↩ then Sets) —
+the four In-notch scenarios SKIP with `--picker-style popover` —, and (only with `--with-save`) `save_choreography`.
 
 **Pinned clock:** `QR_NOW=2026-10-23T10:00` (local time, or any ISO 8601
 timestamp) shifts the app's clock, read once at launch like `QR_TEXT_SCALE`;

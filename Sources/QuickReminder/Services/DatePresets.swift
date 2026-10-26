@@ -72,19 +72,32 @@ enum DatePreset: Int, CaseIterable, Sendable {
         }
     }
 
-    /// Locale template for a date shown next to "now" (preset details, the Set button, their
-    /// spoken labels): time only today ("19:00"), weekday + time for the next six days
-    /// ("so 9:00" / "Sat 9:00 AM"), day + month + time from a week out ("1. 11. 9:00" /
-    /// "Nov 1 at 9:00 AM") — a bare weekday would name the wrong day (Next Month on a Saturday
-    /// reads "Sun 9:00", same as Tomorrow). `spoken` spells weekday and month out for VoiceOver.
-    static func detailTemplate(for date: Date, now: Date, calendar: Calendar = .current, spoken: Bool = false) -> String {
+    /// Locale template for the *day* part of a date shown next to "now" (preset details, the Set
+    /// button, their spoken labels; the time follows as `j:mm`, see
+    /// `SuggestionDateFormatter.presetDetail`): nil today (time only, "19:00"), the weekday for the
+    /// next six days ("so 9:00" / "Sat 9:00 AM"), day + month from a week out ("1. 11. 9:00" /
+    /// "Nov 1 9:00 AM") — a bare weekday would name the wrong day (Next Month on a Saturday reads
+    /// "Sun 9:00", same as Tomorrow). `spoken` spells weekday and month out for VoiceOver.
+    static func dayTemplate(for date: Date, now: Date, calendar: Calendar = .current, spoken: Bool = false) -> String? {
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
                                            to: calendar.startOfDay(for: date)).day ?? 0
         switch days {
-        case 0: return "j:mm"
-        case 1...6: return spoken ? "EEEE j:mm" : "EEE j:mm"
-        default: return spoken ? "EEEE d MMMM j:mm" : "d MMM j:mm"
+        case 0: return nil
+        case 1...6: return spoken ? "EEEE" : "EEE"
+        default: return spoken ? "EEEE d MMMM" : "d MMM"
         }
+    }
+
+    /// The preset card to highlight for `draft`. Several presets can land on the same minute
+    /// (on a Friday, Tomorrow and This Weekend are both Sat 9:00): the one the user actually
+    /// picked wins while the date is still the one it set; any other date (typed, calendar, time
+    /// chips, a stale pick) highlights the first preset in display order that matches, or none.
+    static func highlighted(for draft: Date, picked: PresetPick?, now: Date, calendar: Calendar = .current) -> DatePreset? {
+        func same(_ a: Date, _ b: Date) -> Bool { calendar.compare(a, to: b, toGranularity: .minute) == .orderedSame }
+        if let picked, same(picked.date, draft), same(date(for: picked.preset, now: now, calendar: calendar), draft) {
+            return picked.preset
+        }
+        return allCases.first { same(date(for: $0, now: now, calendar: calendar), draft) }
     }
 
     /// The next `weekday` (1 = Sunday … 7 = Saturday) strictly after today, at the start of the day.
@@ -97,4 +110,11 @@ enum DatePreset: Int, CaseIterable, Sendable {
         if delta == 0 { delta = 7 }
         return calendar.date(byAdding: .day, value: delta, to: today) ?? today
     }
+}
+
+/// A preset the user chose and the date it wrote; `DatePreset.highlighted` trusts it only while
+/// the reminder still carries that date.
+struct PresetPick: Equatable, Sendable {
+    let preset: DatePreset
+    let date: Date
 }

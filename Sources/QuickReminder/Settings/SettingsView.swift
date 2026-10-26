@@ -4,6 +4,7 @@ struct SettingsView: View {
     @ObservedObject private var remindersService = RemindersService.shared
     @ObservedObject private var loginItem = LoginItem.shared
     @AppStorage("selectedListId") private var selectedListId: String = ""
+    @AppStorage(SetDateStyle.defaultsKey) private var datePickerStyle: SetDateStyle = .defaultStyle
 
     var body: some View {
         Form {
@@ -31,6 +32,14 @@ struct SettingsView: View {
             Section("Hotkey") {
                 LabeledContent("Show Quick Reminder:") {
                     HotkeyRecorderView()
+                }
+            }
+
+            Section("Set Date") {
+                Picker("Date picker style", selection: $datePickerStyle) {
+                    ForEach(SetDateStyle.allCases) { style in
+                        Text(style.title).tag(style)
+                    }
                 }
             }
 

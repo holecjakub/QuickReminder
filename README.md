@@ -37,12 +37,14 @@ Scripts/test.sh    # same, with a one-line pass/fail summary; passes extra args 
 | Type, `⌘↩` / `↩` / click ✓ | Saves to Apple Reminders; the panel shrinks to a wide notch pill, the ✓ flies in and ticks, then the notch returns to normal |
 | `Esc`, click outside, hotkey again, ⓧ | Collapses without saving |
 | “Reminders ▾” | Pick the target list (persists) |
-| Calendar icon | Remind me in 1 hour / tomorrow / pick a date… |
+| Calendar icon | Presets (in 1 hour, this evening, tomorrow, weekend, next week) or Custom… |
+| `⌘D`, Custom…, the date chip | Set Date: type a date (“zítra 14:00”, “fri 2pm”, “+2h”), pick a preset (`⌘1`…`⌘6`), or set day and time (`⌘K` calendar). By default the black notch panel grows to show it; Settings → Date picker style → Popover shows it in a popover instead |
 | Location icon | Add a location note (appended to Notes as 📍 …) |
 | Flag icon | Toggle flagged (orange) — stored as High priority, EventKit exposes no flag |
 | `open quickreminder://show` (`hide`, `toggle`) | Same actions from Shortcuts, Raycast, scripts |
+| Raycast / Spotlight: “Quick Reminder” | Opening the app (running or not) opens the panel. For a “Quick Reminder” command in Raycast, add `Scripts/raycast/` under Raycast → Settings → Extensions → Script Commands. |
 
-Menu bar icon → **Settings…** to launch at login, change the hotkey (needs ⌘, ⌃ or ⌥) or pick the default list. The app asks for Reminders access on first launch (System Settings → Privacy & Security → Reminders if you need to re-enable it).
+Menu bar icon → **Settings…** to launch at login, change the hotkey (needs ⌘, ⌃ or ⌥), pick the default list, or choose how Set Date opens (in the notch or as a popover). The app asks for Reminders access on first launch (System Settings → Privacy & Security → Reminders if you need to re-enable it).
 
 ## Screenshots while developing
 
