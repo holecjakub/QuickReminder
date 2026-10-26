@@ -29,13 +29,29 @@ final class NotchState: ObservableObject {
     @Published var closedSize: CGSize = CGSize(width: 221, height: 38)
     /// Size of the fully expanded panel.
     @Published var openSize: CGSize = NotchLayout.openSize
+    /// In-notch Set Date: the open panel grown by the scheduling controls / plus the month grid.
+    @Published var scheduleSize: CGSize = NotchLayout.openSize(notchBandHeight: NotchLayout.defaultNotchBandHeight, schedule: .controls)
+    @Published var scheduleCalendarSize: CGSize = NotchLayout.openSize(notchBandHeight: NotchLayout.defaultNotchBandHeight, schedule: .calendar)
+    /// How far the open panel is grown for the in-notch Set Date section (mirrors `NotchMachine.schedule`).
+    @Published var schedule: ScheduleExpansion = .none
 
     /// Height of the band occupied by the physical notch / menu bar at the top of the panel.
     var notchBandHeight: CGFloat { closedSize.height }
 
+    /// The open panel at its current schedule height.
+    var panelSize: CGSize { size(for: schedule) }
+
+    func size(for expansion: ScheduleExpansion) -> CGSize {
+        switch expansion {
+        case .none: return openSize
+        case .controls: return scheduleSize
+        case .calendar: return scheduleCalendarSize
+        }
+    }
+
     var currentSize: CGSize {
         if isSaving { return savedSize }
-        if isOpen { return openSize }
+        if isOpen { return panelSize }
         if isHovering { return hoverSize }
         return closedSize
     }
@@ -76,19 +92,107 @@ enum NotchLayout {
                       height: notchBandHeight + contentHeight(textScale: s))
     }
 
+    /// Open panel size with the in-notch Set Date section at `schedule` (`.none` = the plain panel),
+    /// never taller than `maxHeight` (see `maxPanelHeight`) and never shorter than the plain
+    /// panel. When clamped, the section's rows scroll between the fixed title and footer.
+    @MainActor static func openSize(notchBandHeight: CGFloat, schedule: ScheduleExpansion,
+                                    maxHeight: CGFloat = .infinity) -> CGSize {
+        let plain = openSize(notchBandHeight: notchBandHeight)
+        guard schedule != .none else { return plain }
+        let natural = notchBandHeight + scheduleContentHeight(textScale: textScale, calendar: schedule == .calendar)
+        return CGSize(width: plain.width, height: max(plain.height, min(natural, maxHeight.rounded(.down))))
+    }
+
+    /// Room below the grown panel: the spring's overshoot (`overshootPadding`) plus a little air
+    /// above the Dock / the bottom of the screen.
+    static let scheduleScreenMargin: CGFloat = overshootPadding + 16
+
+    /// The tallest the open panel may grow on a screen: from the top edge (the panel covers the
+    /// menu bar) down to the top of the visible area (above the Dock), minus the margin.
+    static func maxPanelHeight(screenFrame: CGRect, visibleFrame: CGRect) -> CGFloat {
+        screenFrame.maxY - visibleFrame.minY - scheduleScreenMargin
+    }
+
+    /// Where the in-notch Set Date section starts, from the top of the panel (hosting view, top-down).
+    @MainActor static func scheduleSectionTop(notchBandHeight: CGFloat, textScale s: CGFloat) -> CGFloat {
+        notchBandHeight + topContentHeight(textScale: s)
+    }
+
+    /// A click inside the open panel above the section (header, title, notes) cancels scheduling,
+    /// like a click outside the popover; the click still reaches what it landed on. The section's
+    /// full width counts as inside, so a near miss beside a control does not cancel.
+    static func clickCancelsSchedule(atY y: CGFloat, sectionTop: CGFloat, schedule: ScheduleExpansion) -> Bool {
+        schedule != .none && y < sectionTop
+    }
+
     /// Vertical rhythm of the open content below the notch band (SPEC §4) at text scale `s`.
     /// Every term has a counterpart in QuickReminderView / HeaderView / InputView / BottomBar;
     /// a change there must be mirrored here (`NotchStateTests.openHeightFollowsTheRhythm`).
     @MainActor static func contentHeight(textScale s: CGFloat) -> CGFloat {
         func sc(_ v: CGFloat) -> CGFloat { (v * s).rounded(.toNearestOrEven) }
+        let chipSlot = sc(26)
+        let bottomBar = sc(48)                                // ✓ button, taller than the 44 pt pill
+        return topContentHeight(textScale: s) + chipSlot + 8 + bottomBar + Theme.horizontalPadding
+    }
+
+    /// Header + title/notes: the part of the content the in-notch Set Date section keeps on top.
+    @MainActor static func topContentHeight(textScale s: CGFloat) -> CGFloat {
+        func sc(_ v: CGFloat) -> CGFloat { (v * s).rounded(.toNearestOrEven) }
         let header = sc(36)                                   // ⓧ hit frame, taller than the 22 pt title
         let input = (PlainTextView.lineHeight(for: sc(19)) + 2)
             + 1                                               // row spacing
             + (PlainTextView.lineHeight(for: sc(15)) + 2)
-        let chipSlot = sc(26)
-        let bottomBar = sc(48)                                // ✓ button, taller than the 44 pt pill
-        return 8 + header + 10 + input + chipSlot + 8 + bottomBar + Theme.horizontalPadding
+        return 8 + header + 10 + input
     }
+
+    /// In-notch Set Date: header + title stay, the chip slot and bottom bar give way to the
+    /// scheduling section (`ScheduleNotchSection`, which lays itself out from these same metrics;
+    /// `NotchStateTests.scheduleHeightFollowsTheRhythm` pins the sum).
+    @MainActor static func scheduleContentHeight(textScale s: CGFloat, calendar: Bool) -> CGFloat {
+        topContentHeight(textScale: s) + ScheduleMetrics.sectionHeight(textScale: s, calendar: calendar) + Theme.horizontalPadding
+    }
+
+    /// Vertical metrics of the in-notch Set Date section, at 100 % text size (scaled like `Theme.s`).
+    /// Gaps are fixed points, control heights scale.
+    enum ScheduleMetrics {
+        static let topGap: CGFloat = 14          // input → type field
+        static let typeField: CGFloat = 36
+        static let previewGap: CGFloat = 6
+        static let preview: CGFloat = 18
+        static let presetsGap: CGFloat = 10
+        static let presetRow: CGFloat = 44       // 3 × 2 cards
+        static let presetSpacing: CGFloat = 8
+        static let dayTimeGap: CGFloat = 12
+        static let dayTimeRow: CGFloat = 30
+        static let calendarGap: CGFloat = 10
+        static let monthHeader: CGFloat = 26
+        static let weekdayRow: CGFloat = 18
+        static let dayCell: CGFloat = 28         // 6 rows, always: the month never changes the height
+        static let dayRowSpacing: CGFloat = 2
+        static let footerGap: CGFloat = 14
+        static let footer: CGFloat = 36
+        /// Concentric with the panel's 32 pt bottom corners at the 20 pt inset (32 − 20).
+        static let controlRadius: CGFloat = 12
+
+        @MainActor static func calendarHeight(textScale s: CGFloat) -> CGFloat {
+            func sc(_ v: CGFloat) -> CGFloat { (v * s).rounded(.toNearestOrEven) }
+            return sc(monthHeader) + sc(weekdayRow) + 6 * sc(dayCell) + 5 * dayRowSpacing
+        }
+
+        @MainActor static func sectionHeight(textScale s: CGFloat, calendar: Bool) -> CGFloat {
+            func sc(_ v: CGFloat) -> CGFloat { (v * s).rounded(.toNearestOrEven) }
+            var height = topGap + sc(typeField) + previewGap + sc(preview)
+                + presetsGap + 2 * sc(presetRow) + presetSpacing
+                + dayTimeGap + sc(dayTimeRow)
+            if calendar { height += calendarGap + calendarHeight(textScale: s) }
+            return height + footerGap + sc(footer)
+        }
+    }
+
+    /// Blob growth / shrink for the in-notch Set Date section: the open spring's gooey language,
+    /// a touch quicker since it is a step within the panel. Reduce Motion: plain ease.
+    static let scheduleAnimation: Animation = .spring(response: 0.38, dampingFraction: 0.8, blendDuration: 0)
+    @MainActor static var effectiveSchedule: Animation { reduceMotion ? reducedMotionAnimation : scheduleAnimation }
     /// System text size (System Settings → Accessibility → Display → Text size, or per-app),
     /// relative to the default 13 pt body. Read live so every open reflects the current setting.
     @MainActor static var textScale: CGFloat {

@@ -98,17 +98,42 @@ struct DatePresetsTests {
         #expect(date(.evening, now) == "2026-10-19 19:00")
     }
 
-    @Test func detailTemplateByDistance() {
+    @Test func dayTemplateByDistance() {
         let now = prague(2026, 10, 24, 17, 39)   // Saturday
-        func template(_ date: Date, spoken: Bool = false) -> String {
-            DatePreset.detailTemplate(for: date, now: now, calendar: pragueCalendar, spoken: spoken)
+        func template(_ date: Date, spoken: Bool = false) -> String? {
+            DatePreset.dayTemplate(for: date, now: now, calendar: pragueCalendar, spoken: spoken)
         }
-        #expect(template(prague(2026, 10, 24, 19, 0)) == "j:mm")
-        #expect(template(prague(2026, 10, 25, 9, 0)) == "EEE j:mm")
-        #expect(template(prague(2026, 10, 30, 9, 0)) == "EEE j:mm")        // 6 days
-        #expect(template(prague(2026, 10, 31, 9, 0)) == "d MMM j:mm")      // 7 days
-        #expect(template(prague(2026, 10, 31, 9, 0), spoken: true) == "EEEE d MMMM j:mm")
-        #expect(template(prague(2026, 10, 23, 9, 0)) == "d MMM j:mm")      // past day
+        #expect(template(prague(2026, 10, 24, 19, 0)) == nil)               // today: time only
+        #expect(template(prague(2026, 10, 25, 9, 0)) == "EEE")
+        #expect(template(prague(2026, 10, 30, 9, 0)) == "EEE")              // 6 days
+        #expect(template(prague(2026, 10, 31, 9, 0)) == "d MMM")            // 7 days
+        #expect(template(prague(2026, 10, 31, 9, 0), spoken: true) == "EEEE d MMMM")
+        #expect(template(prague(2026, 10, 23, 9, 0)) == "d MMM")            // past day
+    }
+
+    /// Friday 23 Oct: Tomorrow and This Weekend are both Sat 9:00.
+    @Test func onlyOnePresetIsHighlighted() {
+        let now = prague(2026, 10, 23, 10, 0)
+        let saturday = prague(2026, 10, 24, 9, 0)
+        func pick(_ preset: DatePreset) -> PresetPick { PresetPick(preset: preset, date: DatePreset.date(for: preset, now: now, calendar: pragueCalendar)) }
+        #expect(DatePreset.highlighted(for: saturday, picked: nil, now: now, calendar: pragueCalendar) == .tomorrow,
+                "typed / manual: the first match in display order")
+        #expect(DatePreset.highlighted(for: saturday, picked: pick(.weekend), now: now, calendar: pragueCalendar) == .weekend,
+                "the picked one, not both")
+        #expect(DatePreset.highlighted(for: saturday, picked: pick(.tomorrow), now: now, calendar: pragueCalendar) == .tomorrow)
+        #expect(DatePreset.highlighted(for: prague(2026, 10, 24, 14, 0), picked: pick(.weekend), now: now, calendar: pragueCalendar) == nil,
+                "a date no preset lands on highlights nothing; the stale pick is ignored")
+        #expect(DatePreset.highlighted(for: prague(2026, 10, 26, 9, 0), picked: pick(.weekend), now: now, calendar: pragueCalendar) == .nextWeek)
+    }
+
+    /// The pick only counts while its preset still lands on that minute: In 1 Hour picked at 10:00
+    /// (→ 11:00) no longer resolves to 11:00 at 10:30, so it is not highlighted any more.
+    @Test func aPickWhosePresetMovedOnIsDropped() {
+        let picked = PresetPick(preset: .inOneHour, date: prague(2026, 10, 23, 11, 0))
+        let at = prague(2026, 10, 23, 10, 0)
+        #expect(DatePreset.highlighted(for: picked.date, picked: picked, now: at, calendar: pragueCalendar) == .inOneHour)
+        let later = prague(2026, 10, 23, 10, 30)
+        #expect(DatePreset.highlighted(for: picked.date, picked: picked, now: later, calendar: pragueCalendar) == nil)
     }
 }
 
@@ -136,14 +161,28 @@ struct PresetDetailTests {
     @Test func aWeekOrMoreAheadShowsTheDate() {
         let now = prague(2026, 10, 24, 17, 39)
         #expect(detail(en, .tomorrow, now) == "Sun 9:00 AM")
-        #expect(detail(en, .nextMonth, now) == "Nov 1 at 9:00 AM")
-        #expect(detail(en, .weekend, now) == "Oct 31 at 9:00 AM")
+        #expect(detail(en, .nextMonth, now) == "Nov 1 9:00 AM")
+        #expect(detail(en, .weekend, now) == "Oct 31 9:00 AM")
         #expect(detail(cs, .tomorrow, now) == "ne 9:00")
         #expect(detail(cs, .nextMonth, now) != detail(cs, .tomorrow, now))
         #expect(detail(cs, .nextMonth, now) == "1. 11. 9:00")
         #expect(!detail(cs, .weekend, now).hasPrefix("so"))
-        #expect(detail(en, .nextMonth, now, spoken: true) == "Sunday, November 1 at 9:00 AM")
+        #expect(detail(en, .nextMonth, now, spoken: true) == "Sunday, November 1 9:00 AM")
         #expect(detail(en, .tomorrow, now, spoken: true) == "Sunday 9:00 AM")
+    }
+
+    /// English UI, Czech region (`en_US@rg=czzzzz`, the author's setup): no English "at" glued
+    /// into Czech-style dates, and the time reads like the chips ("9:00", not "09:00").
+    @Test func mixedLocaleReadsAsOneFormat() {
+        let mixed = SuggestionDateFormatter(locale: Locale(identifier: "en_US@rg=czzzzz"), calendar: pragueCalendar)
+        let now = prague(2026, 10, 23, 10, 0)
+        let saturday = prague(2026, 10, 24, 9, 0)
+        #expect(plainSpaces(mixed.presetDetail(saturday, now: now)) == "Sat " + plainSpaces(mixed.time(from: saturday)))
+        #expect(!mixed.presetDetail(prague(2026, 11, 1, 9, 0), now: now).contains(" at "))
+        #expect(!mixed.dayAndTime(saturday).contains(" at "))
+        #expect(plainSpaces(mixed.dayAndTime(saturday)).hasSuffix(" " + plainSpaces(mixed.time(from: saturday))))
+        #expect(plainSpaces(cs.dayAndTime(saturday)) == "sobota 24. října 9:00")
+        #expect(plainSpaces(en.dayAndTime(saturday)) == "Saturday, October 24 9:00 AM")
     }
 
     @Test func cacheIsPerLocaleAndCanBeDropped() {
