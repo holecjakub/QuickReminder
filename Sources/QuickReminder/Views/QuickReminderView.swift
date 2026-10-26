@@ -13,6 +13,8 @@ struct QuickReminderView: View {
     let saveButtonYielded: Bool
     @ObservedObject private var remindersService = RemindersService.shared
     @AppStorage("selectedListId") private var selectedListId: String = ""
+    @AppStorage(DatePickerStyle.defaultsKey) private var pickerStyle: DatePickerStyle = .defaultStyle
+    @EnvironmentObject private var notch: NotchState
 
     @State private var title: String = ""
     @State private var notes: String = ""
@@ -32,6 +34,10 @@ struct QuickReminderView: View {
     private var anyPopoverShown: Bool { showListPicker || showLocationField || showCustomDatePicker }
 
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    /// The in-notch Set Date section is shown (the blob has grown for it). Driven by the panel's
+    /// schedule state, so the section and the blob change in the same spring transaction.
+    private var schedulingInNotch: Bool { notch.schedule != .none }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -54,8 +60,67 @@ struct QuickReminderView: View {
             )
             .padding(.top, 10)
 
-            Spacer(minLength: 0)
+            if schedulingInNotch {
+                ScheduleNotchSection(
+                    selectedDate: $dueDate,
+                    isPresented: $showCustomDatePicker,
+                    accent: accent,
+                    initialText: dueDate == nil ? suggestion?.matchedText : nil,
+                    onConsumeSuggestion: stripSuggestionPhrase,
+                    showsCalendar: notch.schedule == .calendar,
+                    onToggleCalendar: {
+                        PanelController.shared.setSchedule(notch.schedule == .calendar ? .controls : .calendar)
+                    }
+                )
+                // The section's rows stagger in themselves; leaving, it fades quicker than it came.
+                .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.12)),
+                                        removal: .opacity.animation(.easeOut(duration: 0.1))))
+            } else {
+                regularBottom
+                    .transition(.asymmetric(
+                        insertion: .opacity.animation(.easeOut(duration: 0.18).delay(0.12)),
+                        removal: .opacity.animation(.easeOut(duration: 0.08))))
+            }
+        }
+        .padding(.horizontal, Theme.horizontalPadding + NotchLayout.openTopRadius)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(setDateShortcut)
+        .onReceive(NotificationCenter.default.publisher(for: .panelWillShow)) { _ in
+            // Belt and braces next to the locale notification: a 12/24-hour switch while the app
+            // ran shows up on the next open at the latest.
+            SuggestionDateFormatter.invalidateCache()
+            resetState()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .panelDidHide)) { _ in
+            showListPicker = false
+            showLocationField = false
+            showCustomDatePicker = false
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .panelDismissPopovers)) { _ in
+            showListPicker = false
+            showLocationField = false
+            showCustomDatePicker = false
+        }
+        .onChange(of: anyPopoverShown) { _, shown in
+            PanelController.shared.popoverIsOpen = shown
+        }
+        .onChange(of: showCustomDatePicker) { _, isShown in
+            // In-notch style: the panel itself grows (or settles back) instead of a popover.
+            if pickerStyle == .notch || !isShown && schedulingInNotch {
+                PanelController.shared.setSchedule(isShown ? .controls : .none)
+            }
+            // Hand the keyboard back to the panel's title row once Set Date closes.
+            if !isShown { DispatchQueue.main.async { PanelController.shared.restoreKeyFocus() } }
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dueDate != nil)
+        .animation(.easeOut(duration: 0.18), value: suggestion?.matchedText)
+        .onChange(of: title) { _, newValue in updateSuggestion(for: newValue) }
+        .onChange(of: dueDate) { _, newValue in if newValue == nil { updateSuggestion(for: title) } }
+    }
 
+    /// Date chip / suggestion / error slot and the bottom bar (the in-notch Set Date replaces both).
+    private var regularBottom: some View {
+        VStack(alignment: .leading, spacing: 0) {
             // Fixed-height slot for the date chip / suggestion / error, so the bottom bar never
             // jumps when one of them appears (iOS keeps this gap empty until a date is set).
             ZStack(alignment: .bottomLeading) {
@@ -87,6 +152,7 @@ struct QuickReminderView: View {
                 onSave: saveReminder,
                 showLocationField: $showLocationField,
                 showCustomDatePicker: $showCustomDatePicker,
+                presentsPopover: pickerStyle == .popover,
                 suggestionText: suggestion?.matchedText,
                 onConsumeSuggestion: stripSuggestionPhrase,
                 saveNamespace: saveNamespace,
@@ -94,36 +160,6 @@ struct QuickReminderView: View {
             )
             .padding(.bottom, Theme.horizontalPadding)   // same inset below the ✓ as beside it
         }
-        .padding(.horizontal, Theme.horizontalPadding + NotchLayout.openTopRadius)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(setDateShortcut)
-        .onReceive(NotificationCenter.default.publisher(for: .panelWillShow)) { _ in
-            // Belt and braces next to the locale notification: a 12/24-hour switch while the app
-            // ran shows up on the next open at the latest.
-            SuggestionDateFormatter.invalidateCache()
-            resetState()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .panelDidHide)) { _ in
-            showListPicker = false
-            showLocationField = false
-            showCustomDatePicker = false
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .panelDismissPopovers)) { _ in
-            showListPicker = false
-            showLocationField = false
-            showCustomDatePicker = false
-        }
-        .onChange(of: anyPopoverShown) { _, shown in
-            PanelController.shared.popoverIsOpen = shown
-        }
-        .onChange(of: showCustomDatePicker) { _, isShown in
-            // Hand the keyboard back to the panel's title row once Set Date closes.
-            if !isShown { DispatchQueue.main.async { PanelController.shared.restoreKeyFocus() } }
-        }
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: dueDate != nil)
-        .animation(.easeOut(duration: 0.18), value: suggestion?.matchedText)
-        .onChange(of: title) { _, newValue in updateSuggestion(for: newValue) }
-        .onChange(of: dueDate) { _, newValue in if newValue == nil { updateSuggestion(for: title) } }
     }
 
     // MARK: Natural-language date suggestion (Reminders-style, EN + CZ)
@@ -245,6 +281,9 @@ struct QuickReminderView: View {
 
     private func saveReminder() {
         guard !saveButtonYielded else { return }   // already saved; the ✓ is flying
+        // In-notch Set Date open: ↩ in the title must not save past an unset draft (the ✓ is
+        // hidden too); Set or Cancel first.
+        guard !schedulingInNotch else { NSSound.beep(); return }
         // Like iOS Reminders: an un-dismissed date phrase is applied automatically on save.
         if dueDate == nil, suggestion != nil { applySuggestionIfAny() }
         let trimmedTitle = title.trimmingCharacters(in: .whitespaces)

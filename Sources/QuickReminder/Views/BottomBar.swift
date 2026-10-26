@@ -11,6 +11,8 @@ struct BottomBar: View {
 
     @Binding var showLocationField: Bool
     @Binding var showCustomDatePicker: Bool
+    /// Set Date opens as a popover (Settings → Date picker style); otherwise the notch grows instead.
+    let presentsPopover: Bool
     /// The title's live, undismissed date phrase: prefilled into the Set Date popover.
     let suggestionText: String?
     /// Strips that phrase from the title once the popover commits it.
@@ -19,7 +21,7 @@ struct BottomBar: View {
     let saveButtonYielded: Bool
     @Environment(\.listAccent) private var accent
 
-    private let iconSize: CGFloat = 22
+    private let iconSize: CGFloat = 18
     private let hitSize: CGFloat = 38
 
     var body: some View {
@@ -119,7 +121,7 @@ struct BottomBar: View {
         }
         .buttonStyle(HoverHighlightButtonStyle())
         .accessibilityLabel("Set date and time")
-        .popover(isPresented: $showCustomDatePicker, arrowEdge: .bottom) {
+        .popover(isPresented: presentsPopover ? $showCustomDatePicker : .constant(false), arrowEdge: .bottom) {
             SchedulePopover(
                 selectedDate: $dueDate,
                 isPresented: $showCustomDatePicker,
