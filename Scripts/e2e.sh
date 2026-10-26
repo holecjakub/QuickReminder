@@ -18,7 +18,7 @@
 #   Scripts/e2e.sh --picker-style popover|notch
 #                                   Set Date style for the test instance
 #                                    (argument domain, nothing persisted);
-#                                    default: whatever the app defaults to
+#                                    default: notch, whatever Settings say
 #
 # Prints "PASS name" / "FAIL name (reason)" / "SKIP name (reason)" per
 # scenario and a summary line. Exit code = number of failures.
@@ -153,10 +153,9 @@ launch_test_instance() {
     # hotkey in the *test* instance's Settings would write to the shared persistent domain.)
     # QR_NOW (if set in the caller's environment) is inherited: it pins the app's clock so date
     # labels in screenshots are deterministic, e.g. QR_NOW=2026-10-23T10:00 Scripts/e2e.sh.
-    # --picker-style goes the same way (argument domain): -datePickerStyle popover|notch.
-    local style_args=()
-    [[ -n "$PICKER_STYLE" ]] && style_args=(-datePickerStyle "$PICKER_STYLE")
-    QR_CAPTURE_PARKED=1 "$APP_BIN" -hotkey e2e-default ${style_args[@]+"${style_args[@]}"} >"$LOG_DIR/app.log" 2>&1 &
+    # The Set Date style goes the same way (argument domain), always: a plain run must not pick up
+    # whatever the user chose in Settings (the notch-only scenarios would fail against a popover).
+    QR_CAPTURE_PARKED=1 "$APP_BIN" -hotkey e2e-default -datePickerStyle "${PICKER_STYLE:-notch}" >"$LOG_DIR/app.log" 2>&1 &
     disown
     sleep 1.2
     if ! pgrep -x QuickReminder >/dev/null; then
@@ -612,19 +611,42 @@ schedule_notch_return_sets() {
     [[ "$band" -lt $(( before + gain / 4 )) ]] || { fail "expected ⌘↩ to Set and settle the blob (dark=$band)"; return 1; }
     assert_open "schedule_notch_return_cmd_open" || return 1
     assert_date_chip "schedule_notch_return_cmd_chip" || return 1
-    # Again from the text rows: the date chip reopens Set Date via ⌘D on the current date.
+    # Again from a text row. Shift-Tab walks back from the type field; a typed "n" must visibly land
+    # in the NOTES row (white text there) before ↩ is pressed, so the ↩ really is the text row's.
+    # The title stays empty: even a broken routing could not save. If the letter lands in the title
+    # it is deleted and the step SKIPs; anywhere else (the field) it is deleted and we try again.
     press_cmd d
     sleep 0.8
-    osascript -e 'tell application "System Events" to key code 48 using {shift down}'
-    sleep 0.15
-    osascript -e 'tell application "System Events" to key code 48 using {shift down}'
-    sleep 0.3
+    local reached="" tries
+    for tries in 1 2 3; do
+        osascript -e 'tell application "System Events" to key code 48 using {shift down}'
+        sleep 0.25
+        type_text "n"
+        sleep 0.3
+        png=$(shot "schedule_notch_return_probe_$tries")
+        local in_title in_notes
+        in_title=$(bright_count "$png" 60 $(( NOTCH_H + 50 )) 300 22 200)
+        in_notes=$(bright_count "$png" 60 $(( NOTCH_H + 76 )) 300 22 200)
+        log_step "shift-tab #$tries: title=$in_title notes=$in_notes"
+        if [[ "$in_title" -ge 30 && "$in_title" -gt "$in_notes" ]]; then
+            osascript -e 'tell application "System Events" to key code 51'   # delete the "n"
+            echo "SKIP:Shift-Tab reached the title, not the notes; not pressing ↩ with a non-empty title"
+            return 2
+        fi
+        if [[ "$in_notes" -ge 30 ]]; then reached=notes; break; fi
+        osascript -e 'tell application "System Events" to key code 51'
+        sleep 0.2
+    done
+    if [[ -z "$reached" ]]; then
+        echo "SKIP:Shift-Tab did not reach the notes row; the text-row ↩ is covered by TextRowSubmitTests"
+        return 2
+    fi
     press_return
     sleep 0.9
     png=$(shot "schedule_notch_return_text_row" "$region")
     band=$(schedule_band_dark "$png" 300)
-    log_step "after ⌘D ⇧⇥⇧⇥ ↩: band=$band"
-    [[ "$band" -lt $(( before + gain / 4 )) ]] || { fail "expected ↩ to Set from the text rows too (dark=$band)"; return 1; }
+    log_step "after ↩ in the notes: band=$band"
+    [[ "$band" -lt $(( before + gain / 4 )) ]] || { fail "expected ↩ in the notes to Set (dark=$band)"; return 1; }
     assert_open "schedule_notch_return_text_row_open" || return 1
     press_escape
     sleep 0.6
@@ -672,6 +694,42 @@ schedule_notch_click_cancels() {
     assert_closed "schedule_notch_click_closed" || return 1
 }
 
+# In-notch: ↩ in the time field applies the typed time and keeps the section open (only the
+# type field, the title / notes and ⌘↩ mean Set). Tab moves from the type field to the time field.
+schedule_notch_time_return() {
+    if [[ "${PICKER_STYLE:-notch}" == "popover" ]]; then
+        echo "SKIP:picker style is popover"
+        return 2
+    fi
+    local region="$(( PANEL_LEFT - 50 )),0,$(( PANEL_W + 100 )),$SCHEDULE_REGION_H"
+    local gain=$(( 500 * 80 * 4 * 2 / 5 ))
+    hotkey_toggle
+    sleep 0.8
+    assert_open "schedule_notch_time_open" || return 1
+    local png; png=$(shot "schedule_notch_time_before" "$region")
+    local before; before=$(schedule_band_dark "$png" 300)
+    sleep 0.3
+    press_cmd d
+    sleep 0.8
+    press_tab
+    sleep 0.3
+    type_text "15"
+    sleep 0.2
+    press_return
+    sleep 0.8
+    png=$(shot "schedule_notch_time_applied" "$region")
+    local band; band=$(schedule_band_dark "$png" 300)
+    log_step "after ⇥ 15 ↩ in the time field: band=$band"
+    [[ "$band" -ge $(( before + gain )) ]] || { fail "↩ in the time field closed the section (dark=$band)"; return 1; }
+    press_cmd_return
+    sleep 0.9
+    assert_open "schedule_notch_time_set_open" || return 1
+    assert_date_chip "schedule_notch_time_chip" || return 1
+    press_escape
+    sleep 0.6
+    assert_closed "schedule_notch_time_closed" || return 1
+}
+
 # ---------------------------------------------------------------- runner
 
 ALL_SCENARIOS=(
@@ -691,6 +749,7 @@ ALL_SCENARIOS=(
     schedule_notch_expand
     schedule_notch_return_sets
     schedule_notch_click_cancels
+    schedule_notch_time_return
 )
 if [[ "$WITH_SAVE" -eq 1 ]]; then
     ALL_SCENARIOS+=(save_choreography)
