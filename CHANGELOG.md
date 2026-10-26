@@ -4,6 +4,8 @@ All notable changes to QuickReminder. Format: [Keep a Changelog](https://keepach
 
 ## Unreleased
 
+## 0.5.0
+
 - Raycast: opening QuickReminder from Raycast (or Spotlight, Finder, the Dock) opens the panel, whether the app is running or not; it used to do nothing while running. Launch at login stays silent. `Scripts/raycast/quick-reminder.sh` adds a “Quick Reminder” Raycast Script Command.
 - The pill icons (date, location, flag) are smaller: 18 pt instead of 22 pt, in the same 38 pt hit targets.
 - **Set Date in the notch.** New setting Settings → Set Date → Date picker style: *In notch* (default) or *Popover*. In notch, `⌘D`, Custom… or the date chip grow the black panel itself instead of opening a popover: the bottom bar gives way to the Set Date controls restyled for black (type field with live preview, six presets on `⌘1`…`⌘6`, day + typed time with 9/12/15/19 chips, Clear · Cancel · Set), and `⌘K` or the day button grows it further for a month grid (arrow keys move the day). ↩ / ⌘↩ set the date, also from the title or notes; ↩ in the time field just applies the time. Esc steps back: calendar first, then the section, then the panel. A click on the header, title or notes cancels like a click outside the popover. On short screens or at large text sizes the panel stops above the Dock and the controls scroll. Reduce Motion: a plain height change and fades.
