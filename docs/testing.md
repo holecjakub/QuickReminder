@@ -7,7 +7,8 @@ Three layers, from fastest/narrowest to slowest/widest.
 State-machine and pure-logic coverage: `NotchMachineTests`, `NotchStateTests`,
 `NotchShapeTests`, `NaturalDateParserTests`, `SuggestionDateFormatterTests`,
 `HotkeyShortcutTests`, `ScheduleDefaultsTests`, `DatePresetsTests`,
-`ScheduleInputTests`, `ScheduleCommitTests`, `PresetDetailTests`, `PopUpMenuTests` (see `Tests/QuickReminderCoreTests/`).
+`ScheduleInputTests`, `ScheduleCommitTests`, `ScheduleOpeningTests`, `PresetDetailTests`, `PopUpMenuTests`,
+`NotchMachineScheduleTests`, `MonthGridTests`, `DatePickerStyleTests` (see `Tests/QuickReminderCoreTests/`).
 The scheduling tests pin `now` and inject a Europe/Prague calendar (real DST
 days) and cs_CZ / en_US locales. These run
 headless, no app window, no Accessibility permission, and are what CI runs on
@@ -47,6 +48,10 @@ Scripts/e2e.sh --keep          # leave the test instance running afterwards
 Scripts/e2e.sh --with-save     # also run save_choreography (creates a REAL
                                 # reminder in your Reminders app — off by
                                 # default, run deliberately)
+Scripts/e2e.sh --picker-style popover   # Set Date style for the test instance
+                                # (-datePickerStyle in the argument domain,
+                                # nothing persisted); default: the app's
+                                # default, In notch on this branch
 ```
 
 Output is `PASS name` / `FAIL name (reason)` / `SKIP name (reason)` per
@@ -61,7 +66,12 @@ Scenarios: `hotkey_open_close`, `type_suggestion_tab`, `czech_suggestion`,
 `schedule_popover_typed` (⌘D → `zítra 14:00` → ↩ → accent chip),
 `schedule_popover_preset_shortcut` (⌘D → ⌘3 → Tomorrow chip),
 `schedule_popover_esc` (Esc closes only the popover, the panel stays open; a
-second Esc closes it), and (only with `--with-save`) `save_choreography`.
+second Esc closes it) — these three are style-agnostic and exercise whichever
+Set Date style the instance runs (`--picker-style`) —,
+`schedule_notch_expand` (In notch only: ⌘D grows the black panel below its
+normal edge, ⌘K grows it further and back, Esc settles it back with the panel
+still open and the keyboard in the title; skipped with `--picker-style
+popover`), and (only with `--with-save`) `save_choreography`.
 
 **Pinned clock:** `QR_NOW=2026-10-23T10:00` (local time, or any ISO 8601
 timestamp) shifts the app's clock, read once at launch like `QR_TEXT_SCALE`;
