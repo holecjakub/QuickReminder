@@ -28,9 +28,23 @@ struct NotchMachineScheduleTests {
         _ = m.handle(.scheduleChanged(.controls))
         let effects = m.handle(.scheduleChanged(.calendar))
         #expect(m.schedule == .calendar)
-        #expect(!effects.contains(.growCanvasForSchedule))
-        #expect(effects.contains(.animateSchedule(.calendar)))
-        #expect(effects.first == .setSettled(false))
+        #expect(effects == [.setSettled(false), .animateSchedule(.calendar), .scheduleSettle(generation: m.generation)])
+    }
+
+    /// A show while Set Date is open in the notch (URL scheme, menu item, Raycast / Spotlight
+    /// reopen) returns to the plain panel through the Cancel transition, so NotchState follows.
+    @Test func showWhileScheduledResetsTheSchedule() {
+        var m = Self.openMachine()
+        _ = m.handle(.scheduleChanged(.calendar))
+        let effects = m.handle(.show)
+        #expect(m.phase == .open)
+        #expect(m.schedule == .none)
+        #expect(effects == [.setSettled(false), .animateSchedule(.none), .scheduleSettle(generation: m.generation)])
+        #expect(m.handle(.settleTimerFired(generation: m.generation)) == [.setSettled(true), .fitCanvasToPanel])
+        // Plain and open: a further show is still a no-op.
+        #expect(m.handle(.show).isEmpty)
+        // And the section can be opened again afterwards (the machine is not stuck).
+        #expect(m.handle(.scheduleChanged(.controls)).contains(.animateSchedule(.controls)))
     }
 
     @Test func sameExpansionTwiceIsANoOp() {

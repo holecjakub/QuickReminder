@@ -3,29 +3,23 @@ import SwiftUI
 
 /// "Set Date" popover: type a date, pick a preset, or adjust day and time — no clock face.
 ///
-/// One source of truth, `draft`. Typing resolves on every keystroke (`ScheduleInput`) and moves
-/// the controls one-way; any control (calendar, time field, time chip) writes `draft` and clears
-/// the text, so the two inputs never ping-pong. A preset is a one-click commit. Nothing is written
-/// to `selectedDate` until Set / ↩ / a preset: Esc or a click outside leaves the reminder as it was.
+/// The draft, the typed field and every commit decision live in `ScheduleDraft`, shared with the
+/// in-notch section. A preset is a one-click commit. Nothing is written to `selectedDate` until
+/// Set / ↩ / a preset / Clear: Esc or a click outside leaves the reminder as it was.
 struct SchedulePopover: View {
     @Binding var selectedDate: Date?
     @Binding var isPresented: Bool
     /// Which preset wrote the date; Set Date highlights only that one (`DatePreset.highlighted`).
     @Binding var presetPick: PresetPick?
     let accent: Color
-    /// The live, undismissed title suggestion phrase ("zítra ve 2"), prefilled into the field.
-    let initialText: String?
     /// Strips that phrase from the title (Tab semantics) on any commit that writes a date, see
     /// `ScheduleCommit.consumesSuggestion`.
     let onConsumeSuggestion: () -> Void
 
     private enum Field: Hashable { case text, time, calendar }
 
-    @State private var draft: Date
-    @State private var text: String
+    @State private var model: ScheduleDraft
     @State private var showCalendar = false
-    @State private var committed = false
-    @State private var announcement: Task<Void, Never>?
     @FocusState private var focus: Field?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -41,22 +35,19 @@ struct SchedulePopover: View {
     private static let placeholder = ScheduleText.placeholder
     private static var invalidExample: String { ScheduleText.invalidExample }
 
+    /// - Parameter initialText: the title's live, undismissed date phrase ("zítra ve 2"), prefilled.
     init(selectedDate: Binding<Date?>, isPresented: Binding<Bool>, presetPick: Binding<PresetPick?>, accent: Color,
          initialText: String?, onConsumeSuggestion: @escaping () -> Void) {
         _selectedDate = selectedDate
         _isPresented = isPresented
         _presetPick = presetPick
         self.accent = accent
-        self.initialText = initialText
         self.onConsumeSuggestion = onConsumeSuggestion
-
-        let opening = ScheduleCommit.opening(selected: selectedDate.wrappedValue, initialText: initialText, now: AppClock.now)
-        _draft = State(initialValue: opening.draft)
-        _text = State(initialValue: opening.text)
+        _model = State(initialValue: ScheduleDraft(selected: selectedDate.wrappedValue, initialText: initialText))
     }
 
-    private var parsed: ScheduleInput.Result { ScheduleInput.resolve(text, now: AppClock.now) }
-    private var isInvalid: Bool { parsed == .invalid }
+    private var draft: Date { model.draft }
+    private var isInvalid: Bool { model.isInvalid }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -75,13 +66,8 @@ struct SchedulePopover: View {
         .preferredColorScheme(.dark)
         .tint(accent)
         .background(commandReturnTwin)
-        .onChange(of: text) { _, newValue in
-            if case let .date(date) = parsed {
-                draft = date
-            }
-            announcePreview(for: newValue)
-        }
-        .onDisappear { announcement?.cancel() }
+        .onChange(of: model.text) { _, _ in model.announceAfterPause { previewSpoken(now: AppClock.now) } }
+        .onDisappear { model.cancelAnnouncement() }
         .onAppear {
             // One runloop later, like the location popover: the popover window is not key yet.
             DispatchQueue.main.async { focus = .text }
@@ -95,7 +81,7 @@ struct SchedulePopover: View {
             Image(systemName: "text.cursor")
                 .font(.system(size: Theme.s(12), weight: .medium))
                 .foregroundStyle(accent)
-            TextField("", text: $text, prompt: Text(Self.placeholder).foregroundStyle(.white.opacity(0.35)))
+            TextField("", text: $model.text, prompt: Text(Self.placeholder).foregroundStyle(.white.opacity(0.5)))
                 .textFieldStyle(.plain)
                 .font(.system(size: Theme.s(13)))
                 .focused($focus, equals: .text)
@@ -103,15 +89,9 @@ struct SchedulePopover: View {
                 .accessibilityLabel("Type a date")
                 // The typed text stays the field's value; the hint carries what it resolves to,
                 // so it is read when focus lands on the field.
-                .accessibilityHint(text.isEmpty ? "For example \(Self.invalidExample)" : previewSpoken(now: AppClock.now))
-            if !text.isEmpty, case .date = parsed {
-                Text("⏎")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.45))
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(RoundedRectangle(cornerRadius: 4).fill(.white.opacity(0.1)))
-                    .accessibilityHidden(true)
+                .accessibilityHint(model.text.isEmpty ? "For example \(Self.invalidExample)" : previewSpoken(now: AppClock.now))
+            if !model.text.isEmpty, model.textIsDate {
+                KeyHint("⏎")
             }
         }
         .padding(.horizontal, 10)
@@ -130,17 +110,17 @@ struct SchedulePopover: View {
         return HStack(spacing: 4) {
             if isInvalid {
                 Text("Not a date — try “\(Self.invalidExample)”")
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(.white.opacity(0.6))
             } else if draft < now {
                 Image(systemName: "exclamationmark.triangle")
                 Text("In the past")
                 Text("· " + Self.formatter.dayAndTime(draft))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(.white.opacity(0.6))
             } else {
                 Text(Self.formatter.dayAndTime(draft))
                     .foregroundStyle(accent)
                 Text("· " + Self.relative.localizedString(for: draft, relativeTo: now))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(.white.opacity(0.6))
             }
         }
         .foregroundStyle(Theme.flagOrange)
@@ -158,24 +138,12 @@ struct SchedulePopover: View {
         return draft < now ? "In the past, \(date)" : date
     }
 
-    /// VoiceOver does not read value changes of an element it is not focused on, so the preview
-    /// is announced ~400 ms after the last keystroke (once per pause, not per character).
-    private func announcePreview(for newText: String) {
-        announcement?.cancel()
-        guard !newText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        announcement = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(400))
-            guard !Task.isCancelled, !committed else { return }
-            AccessibilityNotification.Announcement(previewSpoken(now: AppClock.now)).post()
-        }
-    }
-
     // MARK: Presets
 
     private var presetGrid: some View {
         let now = AppClock.now
         // Only one card lights up even when several presets land on the same minute.
-        let highlighted = DatePreset.highlighted(for: draft, picked: presetPick, now: now)
+        let highlighted = model.highlightedPreset(picked: presetPick)
         let columns = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
         return LazyVGrid(columns: columns, spacing: 8) {
             ForEach(Array(DatePreset.allCases.enumerated()), id: \.element) { index, preset in
@@ -189,7 +157,7 @@ struct SchedulePopover: View {
         let title = DatePreset.title(for: preset, now: now)
         let detail = Self.formatter.presetDetail(date, now: now)
         let selected = preset == highlighted
-        return Button { apply(preset) } label: {
+        return Button { finish(model.apply(preset)) } label: {
             HStack(alignment: .center, spacing: 8) {
                 Image(systemName: DatePreset.systemImage(for: preset))
                     .font(.system(size: Theme.s(13), weight: .medium))
@@ -201,10 +169,10 @@ struct SchedulePopover: View {
                         .foregroundStyle(.white)
                     HStack(spacing: 4) {
                         Text(detail)
-                            .foregroundStyle(.white.opacity(0.55))
+                            .foregroundStyle(.white.opacity(0.6))
                         Spacer(minLength: 2)
                         Text("⌘\(number)")
-                            .foregroundStyle(.white.opacity(0.35))
+                            .foregroundStyle(.white.opacity(0.5))
                     }
                     .font(.system(size: Theme.s(11)))
                 }
@@ -224,16 +192,11 @@ struct SchedulePopover: View {
     // MARK: Day + time
 
     private var dayBinding: Binding<Date> {
-        Binding(get: { draft }, set: { day in setFromControls(ScheduleDefaults.compose(day: day, time: draft)) })
+        Binding(get: { model.draft }, set: { day in model.pick(day: day) })
     }
 
     private var timeBinding: Binding<Date> {
-        Binding(get: { draft }, set: { time in setFromControls(ScheduleDefaults.compose(day: draft, time: time)) })
-    }
-
-    private func setFromControls(_ date: Date) {
-        draft = date
-        text = ""
+        Binding(get: { model.draft }, set: { time in model.setFromControls(ScheduleDefaults.compose(day: model.draft, time: time)) })
     }
 
     private var dayTimeRow: some View {
@@ -278,10 +241,10 @@ struct SchedulePopover: View {
         let date = ScheduleDefaults.at(hour: hour, minute: 0, on: draft)
         let parts = Calendar.current.dateComponents([.hour, .minute], from: draft)
         let selected = parts.hour == hour && parts.minute == 0
-        return Button { setFromControls(date) } label: {
+        return Button { model.setTime(hour: hour) } label: {
             Text(Self.formatter.time(from: date))
                 .font(.system(size: Theme.s(11), weight: .medium).monospacedDigit())
-                .foregroundStyle(selected ? Color.white : Color.white.opacity(0.75))
+                .foregroundStyle(selected ? AccentContrast.label(on: accent) : Color.white.opacity(0.75))
                 .padding(.horizontal, 9)
                 .frame(height: Theme.s(22))
                 .background(Capsule().fill(selected ? accent : Color.white.opacity(0.07)))
@@ -318,18 +281,18 @@ struct SchedulePopover: View {
     private var footer: some View {
         HStack(spacing: 8) {
             if selectedDate != nil {
-                Button("Clear") {
-                    selectedDate = nil
-                    presetPick = nil
-                    isPresented = false
-                }
+                Button("Clear") { finish(model.clear()) }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
             Button("Cancel") { isPresented = false }
                 .keyboardShortcut(.cancelAction)
-            Button("Set · \(Self.formatter.presetDetail(draft, now: AppClock.now))", action: commit)
+            // The label picks its colour against the list's accent (white on orange / yellow fails).
+            Button(action: commit) {
+                Text("Set · \(Self.formatter.presetDetail(draft, now: AppClock.now))")
+                    .foregroundStyle(isInvalid ? Color.white : AccentContrast.label(on: accent))
+            }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(isInvalid)
@@ -351,29 +314,19 @@ struct SchedulePopover: View {
     // MARK: Commit
 
     private func commit() {
-        guard !committed else { return }
-        guard let date = ScheduleCommit.dateToSet(for: parsed, draft: draft) else {
-            NSSound.beep()
+        guard let outcome = model.set() else {
+            if !model.committed { NSSound.beep() }   // not a date: stay open
             return
         }
-        draft = date
-        presetPick = nil   // typed / manual: the highlight falls back to the first matching preset
-        finish(with: date, action: .set)
+        finish(outcome)
     }
 
-    private func apply(_ preset: DatePreset) {
-        guard !committed else { return }
-        let date = DatePreset.date(for: preset, now: AppClock.now)
-        presetPick = PresetPick(preset: preset, date: date)
-        finish(with: date, action: .preset)
-    }
-
-    private func finish(with date: Date, action: ScheduleCommit.Action) {
-        committed = true
-        announcement?.cancel()
-        selectedDate = date
+    private func finish(_ outcome: ScheduleDraft.Outcome?) {
+        guard let outcome else { return }
+        selectedDate = outcome.date
+        presetPick = outcome.presetPick
         isPresented = false
-        if ScheduleCommit.consumesSuggestion(initialText: initialText, action: action) { onConsumeSuggestion() }
+        if outcome.consumesSuggestion { onConsumeSuggestion() }
     }
 }
 

@@ -186,18 +186,7 @@ struct NotchMachine: Hashable, Sendable {
 
         case .scheduleChanged(let expansion):
             guard phase == .open, expansion != schedule else { return [] }
-            schedule = expansion
-            generation &+= 1
-            // The content mask goes back on while the blob springs: the section is laid out at its
-            // final height at once and must never show outside the black.
-            var effects: [NotchEffect] = [.setSettled(false)]
-            if expansion != .none && !canvasGrown {
-                canvasGrown = true
-                effects.append(.growCanvasForSchedule)
-            }
-            effects.append(.animateSchedule(expansion))
-            effects.append(.scheduleSettle(generation: generation))
-            return effects
+            return changeSchedule(to: expansion)
 
         case .hoverEntered:
             guard phase == .closed(parked: true), hoverArmed, !hoverSwollen, !hoverDwellPending else { return [] }
@@ -250,8 +239,28 @@ struct NotchMachine: Hashable, Sendable {
 
     // MARK: - Transitions shared by several events
 
+    private mutating func changeSchedule(to expansion: ScheduleExpansion) -> [NotchEffect] {
+        schedule = expansion
+        generation &+= 1
+        // The content mask goes back on while the blob springs: the section is laid out at its
+        // final height at once and must never show outside the black.
+        var effects: [NotchEffect] = [.setSettled(false)]
+        if expansion != .none && !canvasGrown {
+            canvasGrown = true
+            effects.append(.growCanvasForSchedule)
+        }
+        effects.append(.animateSchedule(expansion))
+        effects.append(.scheduleSettle(generation: generation))
+        return effects
+    }
+
     private mutating func show() -> [NotchEffect] {
-        guard phase != .open else { return [] }
+        // Already open: nothing to do — except that a show (hotkey menu item, URL scheme, a
+        // Raycast / Spotlight reopen) while Set Date is open in the notch returns to the plain
+        // panel, through the same transition as Cancel, so NotchState and the view follow.
+        guard phase != .open else {
+            return schedule == .none ? [] : changeSchedule(to: .none)
+        }
         var effects: [NotchEffect] = []
         if hoverDwellPending {
             hoverDwellPending = false

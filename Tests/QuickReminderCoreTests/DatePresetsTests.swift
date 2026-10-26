@@ -125,6 +125,16 @@ struct DatePresetsTests {
                 "a date no preset lands on highlights nothing; the stale pick is ignored")
         #expect(DatePreset.highlighted(for: prague(2026, 10, 26, 9, 0), picked: pick(.weekend), now: now, calendar: pragueCalendar) == .nextWeek)
     }
+
+    /// The pick only counts while its preset still lands on that minute: In 1 Hour picked at 10:00
+    /// (→ 11:00) no longer resolves to 11:00 at 10:30, so it is not highlighted any more.
+    @Test func aPickWhosePresetMovedOnIsDropped() {
+        let picked = PresetPick(preset: .inOneHour, date: prague(2026, 10, 23, 11, 0))
+        let at = prague(2026, 10, 23, 10, 0)
+        #expect(DatePreset.highlighted(for: picked.date, picked: picked, now: at, calendar: pragueCalendar) == .inOneHour)
+        let later = prague(2026, 10, 23, 10, 30)
+        #expect(DatePreset.highlighted(for: picked.date, picked: picked, now: later, calendar: pragueCalendar) == nil)
+    }
 }
 
 /// The formatter the menu, the preset cards and the Set button actually use.

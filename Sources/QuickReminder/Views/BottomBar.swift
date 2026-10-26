@@ -10,9 +10,10 @@ struct BottomBar: View {
     let onSave: () -> Void
 
     @Binding var showLocationField: Bool
-    @Binding var showCustomDatePicker: Bool
-    /// Set Date opens as a popover (Settings → Date picker style); otherwise the notch grows instead.
-    let presentsPopover: Bool
+    /// The Set Date popover (only ever true in the Popover style).
+    @Binding var showSchedulePopover: Bool
+    /// Custom…: opens Set Date in the current style (popover, or the notch grows).
+    let onOpenSetDate: () -> Void
     /// Which preset wrote the date (menu presets and the popover record it).
     @Binding var presetPick: PresetPick?
     /// The title's live, undismissed date phrase: prefilled into the Set Date popover.
@@ -118,17 +119,17 @@ struct BottomBar: View {
                 },
             ] + presets + [
                 .separator,
-                .action("Custom…", systemImage: "calendar.badge.clock", keyEquivalentHint: "d") { showCustomDatePicker = true },
+                .action("Custom…", systemImage: "calendar.badge.clock", keyEquivalentHint: "d") { onOpenSetDate() },
             ], belowPanelAt: NSEvent.mouseLocation.x - 12)
         } label: {
             icon("calendar.badge.clock", active: dueDate != nil)
         }
         .buttonStyle(HoverHighlightButtonStyle())
         .accessibilityLabel("Set date and time")
-        .popover(isPresented: presentsPopover ? $showCustomDatePicker : .constant(false), arrowEdge: .bottom) {
+        .popover(isPresented: $showSchedulePopover, arrowEdge: .bottom) {
             SchedulePopover(
                 selectedDate: $dueDate,
-                isPresented: $showCustomDatePicker,
+                isPresented: $showSchedulePopover,
                 presetPick: $presetPick,
                 accent: accent,
                 initialText: dueDate == nil ? suggestionText : nil,

@@ -130,7 +130,10 @@ final class PanelController {
             guard let screen else { return }
             let window = ensureWindow(on: screen)
             var noAnim = Transaction(); noAnim.disablesAnimations = true
-            withTransaction(noAnim) { state.canvasSize = NotchLayout.canvasSize(for: state.openSize) }
+            withTransaction(noAnim) {
+                state.canvasSize = NotchLayout.canvasSize(for: state.openSize)
+                if state.schedule != .none { state.schedule = .none }   // every open starts plain
+            }
             window.setFrame(windowFrame(for: screen), display: false)
             if state.isOpen { state.isOpen = false }
             if state.contentVisible { state.contentVisible = false }
@@ -310,6 +313,9 @@ final class PanelController {
     /// unless the user is already editing something.
     private func focusTitleFieldIfNeeded() {
         guard machine.isVisible, !state.isSaving, let window, let hostingView else { return }
+        // In-notch Set Date owns the keyboard while it is shown (its fields, the grid); the
+        // open-time retries must not pull it back to the title (⌘D right after the hotkey).
+        if state.schedule != .none { return }
         // The title / notes rows are real text views. A field editor belongs to a SwiftUI
         // TextField (the in-notch Set Date fields) that may just have left the hierarchy and
         // still holds first responder, so it does not count as "the user is editing".

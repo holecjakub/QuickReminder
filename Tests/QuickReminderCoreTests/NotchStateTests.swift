@@ -163,7 +163,7 @@ struct NotchStateTests {
         let visible = CGRect(x: 0, y: 70, width: 1512, height: 982 - 70 - 38)
         let maxHeight = NotchLayout.maxPanelHeight(screenFrame: screen, visibleFrame: visible)
         #expect(maxHeight == 982 - 70 - NotchLayout.scheduleScreenMargin)
-        #expect(NotchLayout.scheduleScreenMargin > NotchLayout.overshootPadding, "the canvas' overshoot room stays on screen")
+        #expect(NotchLayout.scheduleScreenMargin == 40, "24 pt overshoot room + 16 pt air")
         // Hidden Dock: the whole height below the top edge.
         #expect(NotchLayout.maxPanelHeight(screenFrame: screen, visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 944))
                 == 982 - NotchLayout.scheduleScreenMargin)

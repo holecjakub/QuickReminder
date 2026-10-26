@@ -13,7 +13,7 @@ struct QuickReminderView: View {
     let saveButtonYielded: Bool
     @ObservedObject private var remindersService = RemindersService.shared
     @AppStorage("selectedListId") private var selectedListId: String = ""
-    @AppStorage(DatePickerStyle.defaultsKey) private var pickerStyle: DatePickerStyle = .defaultStyle
+    @AppStorage(SetDateStyle.defaultsKey) private var pickerStyle: SetDateStyle = .defaultStyle
     @EnvironmentObject private var notch: NotchState
 
     @State private var title: String = ""
@@ -23,7 +23,9 @@ struct QuickReminderView: View {
     @State private var locationText: String = ""
     @State private var showListPicker: Bool = false
     @State private var showLocationField: Bool = false
-    @State private var showCustomDatePicker: Bool = false
+    /// The Set Date popover (Popover style only). The in-notch section has no flag of its own: it
+    /// is shown while `notch.schedule != .none`, the panel's single source of truth.
+    @State private var showSchedulePopover: Bool = false
     @State private var saveErrorText: String? = nil
     @State private var suggestion: DateSuggestion? = nil
     @State private var dismissedSuggestionText: String? = nil
@@ -34,7 +36,8 @@ struct QuickReminderView: View {
 
     @Environment(\.listAccent) private var accent
 
-    private var anyPopoverShown: Bool { showListPicker || showLocationField || showCustomDatePicker }
+    /// Something Esc should close before the panel (popovers, the in-notch section).
+    private var anyPopoverShown: Bool { showListPicker || showLocationField || showSchedulePopover || schedulingInNotch }
 
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
 
@@ -66,7 +69,6 @@ struct QuickReminderView: View {
             if schedulingInNotch {
                 ScheduleNotchSection(
                     selectedDate: $dueDate,
-                    isPresented: $showCustomDatePicker,
                     presetPick: $presetPick,
                     accent: accent,
                     initialText: dueDate == nil ? suggestion?.matchedText : nil,
@@ -74,7 +76,8 @@ struct QuickReminderView: View {
                     showsCalendar: notch.schedule == .calendar,
                     onToggleCalendar: {
                         PanelController.shared.setSchedule(notch.schedule == .calendar ? .controls : .calendar)
-                    }
+                    },
+                    onClose: { PanelController.shared.setSchedule(.none) }
                 )
                 // Takes the rest of the panel; its rows scroll when the screen clamps the height.
                 .frame(maxHeight: .infinity, alignment: .top)
@@ -101,29 +104,25 @@ struct QuickReminderView: View {
         .onReceive(NotificationCenter.default.publisher(for: .panelDidHide)) { _ in
             showListPicker = false
             showLocationField = false
-            showCustomDatePicker = false
+            showSchedulePopover = false
         }
         .onReceive(NotificationCenter.default.publisher(for: .panelDismissPopovers)) { _ in
             showListPicker = false
             showLocationField = false
             // In-notch Set Date steps back one level per Esc: calendar → controls → closed.
-            if schedulingInNotch, notch.schedule.afterEscape != .none {
+            if schedulingInNotch {
                 PanelController.shared.setSchedule(notch.schedule.afterEscape)
             } else {
-                showCustomDatePicker = false
+                showSchedulePopover = false
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .panelCancelSchedule)) { _ in
-            if schedulingInNotch { showCustomDatePicker = false }
+            if schedulingInNotch { PanelController.shared.setSchedule(.none) }
         }
         .onChange(of: anyPopoverShown) { _, shown in
             PanelController.shared.popoverIsOpen = shown
         }
-        .onChange(of: showCustomDatePicker) { _, isShown in
-            // In-notch style: the panel itself grows (or settles back) instead of a popover.
-            if pickerStyle == .notch || !isShown && schedulingInNotch {
-                PanelController.shared.setSchedule(isShown ? .controls : .none)
-            }
+        .onChange(of: showSchedulePopover || schedulingInNotch) { _, isShown in
             // Hand the keyboard back to the panel's title row once Set Date closes.
             if !isShown { DispatchQueue.main.async { PanelController.shared.restoreKeyFocus() } }
         }
@@ -166,8 +165,8 @@ struct QuickReminderView: View {
                 canSave: canSave,
                 onSave: saveReminder,
                 showLocationField: $showLocationField,
-                showCustomDatePicker: $showCustomDatePicker,
-                presentsPopover: pickerStyle == .popover,
+                showSchedulePopover: $showSchedulePopover,
+                onOpenSetDate: openSetDate,
                 presetPick: $presetPick,
                 suggestionText: suggestion?.matchedText,
                 onConsumeSuggestion: stripSuggestionPhrase,
@@ -220,7 +219,7 @@ struct QuickReminderView: View {
     /// ⌘D from the title or notes opens Set Date. An invisible button keeps the shortcut in
     /// SwiftUI's key-equivalent pass (the text view does not bind ⌘D); `.hidden()` would drop it.
     private var setDateShortcut: some View {
-        Button("") { if !saveButtonYielded { showCustomDatePicker = true } }
+        Button("") { if !saveButtonYielded { openSetDate() } }
             .keyboardShortcut("d", modifiers: .command)
             .opacity(0)
             .frame(width: 0, height: 0)
@@ -271,7 +270,7 @@ struct QuickReminderView: View {
     private func dateChip(_ date: Date) -> some View {
         HStack(spacing: 6) {
             // Clicking the date reopens Set Date on it.
-            Button { showCustomDatePicker = true } label: {
+            Button { openSetDate() } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "calendar")
                         .font(.system(size: Theme.s(12), weight: .medium))
@@ -293,6 +292,15 @@ struct QuickReminderView: View {
         }
         .foregroundStyle(accent)
         .padding(.leading, Theme.s(21) + 10)
+    }
+
+    /// ⌘D, Custom… and the date chip. In notch: the panel grows (the machine ignores it unless the
+    /// panel is open, so nothing can get stuck half-shown); otherwise the popover.
+    private func openSetDate() {
+        switch pickerStyle {
+        case .notch: PanelController.shared.setSchedule(.controls)
+        case .popover: showSchedulePopover = true
+        }
     }
 
     /// ↩ in the title or notes: Set while the in-notch section is open, otherwise save.
@@ -346,5 +354,6 @@ struct QuickReminderView: View {
         suggestion = nil
         dismissedSuggestionText = nil
         presetPick = nil
+        showSchedulePopover = false
     }
 }
