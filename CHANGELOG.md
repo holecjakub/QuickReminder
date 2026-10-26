@@ -4,6 +4,11 @@ All notable changes to QuickReminder. Format: [Keep a Changelog](https://keepach
 
 ## Unreleased
 
+- Raycast: opening QuickReminder from Raycast (or Spotlight, Finder, the Dock) opens the panel, whether the app is running or not; it used to do nothing while running. Launch at login stays silent. `Scripts/raycast/quick-reminder.sh` adds a “Quick Reminder” Raycast Script Command.
+- The pill icons (date, location, flag) are smaller: 18 pt instead of 22 pt, in the same 38 pt hit targets.
+
+## 0.4.0
+
 - **No more analog clock.** Remind Me Later… opened a graphical picker whose time had to be set by dragging clock hands. It is replaced by a Set Date popover (`⌘D`, Custom… in the calendar menu, or a click on the date chip): type a date (“zítra 14:00”, “fri 2pm”, “14”, “1430”, “+2h”), pick one of six presets (`⌘1`…`⌘6`, one click), or set the day and type the time (9/12/15/19 chips, a date-only calendar behind `⌘K`). Nothing changes until Set; Esc or a click outside cancels and leaves the panel open. The title's live date suggestion is prefilled.
 - The calendar menu shows what each row resolves to (“This Weekend  so 9:00”) and gains This Evening, This Weekend and Next Week; rows keep their positions (labels adapt, e.g. “Tomorrow Evening” after 18:30).
 - **Behaviour change:** a day-only date for today after 9:00 (“today”, “dnes”) now lands on the next :00 or :30 at least 15 minutes ahead instead of the next full hour. Tab, typing and presets share this rule (`ScheduleDefaults`).

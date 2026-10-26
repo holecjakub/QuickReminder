@@ -51,7 +51,7 @@ struct BottomBar: View {
 
     /// Pill glyphs are rendered through AppKit's symbol configuration rather than SwiftUI's
     /// `Image(systemName:)`: at one point size AppKit draws the three symbols optically balanced
-    /// (measured at 22 pt: calendar.badge.clock 25.5 × 21.5, location 21 × 20, flag 20.5 × 20.5),
+    /// (measured at 22 pt: calendar.badge.clock 25.5 × 21.5, location 21 × 20, flag 20.5 × 20.5; drawn at 18 pt),
     /// whereas the SwiftUI symbol image draws the badge symbol markedly smaller. Template images
     /// take the foreground style, so active colours keep working.
     /// Only the badge symbol needs the AppKit path; `flag` / `location` stay SwiftUI symbols so
