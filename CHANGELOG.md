@@ -4,6 +4,8 @@ All notable changes to QuickReminder. Format: [Keep a Changelog](https://keepach
 
 ## Unreleased
 
+- The pill icons (date, location, flag) are smaller: 18 pt instead of 22 pt, in the same 38 pt hit targets.
+
 ## 0.4.0
 
 - **No more analog clock.** Remind Me Later… opened a graphical picker whose time had to be set by dragging clock hands. It is replaced by a Set Date popover (`⌘D`, Custom… in the calendar menu, or a click on the date chip): type a date (“zítra 14:00”, “fri 2pm”, “14”, “1430”, “+2h”), pick one of six presets (`⌘1`…`⌘6`, one click), or set the day and type the time (9/12/15/19 chips, a date-only calendar behind `⌘K`). Nothing changes until Set; Esc or a click outside cancels and leaves the panel open. The title's live date suggestion is prefilled.
