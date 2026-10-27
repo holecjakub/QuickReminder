@@ -426,6 +426,11 @@ assert_date_chip() {
 # sixth item is always the weekend preset: None, Mark as Urgent, In 1 Hour, Evening, Tomorrow,
 # Weekend.
 date_menu_preset() {
+    # The native menu is the popover style's entry point; in notch the button opens Set Date.
+    if [[ "${PICKER_STYLE:-notch}" != "popover" ]]; then
+        echo "SKIP:the calendar menu exists only in the popover style"
+        return 2
+    fi
     hotkey_toggle
     sleep 0.8
     assert_open "date_menu_preset_open" || return 1

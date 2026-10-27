@@ -37,7 +37,7 @@ Scripts/test.sh    # same, with a one-line pass/fail summary; passes extra args 
 | Type, `⌘↩` / `↩` / click ✓ | Saves to Apple Reminders; the panel shrinks to a wide notch pill, the ✓ flies in and ticks, then the notch returns to normal |
 | `Esc`, click outside, hotkey again, ⓧ | Collapses without saving |
 | “Reminders ▾” | Pick the target list (persists) |
-| Calendar icon | Presets (in 1 hour, this evening, tomorrow, weekend, next week) or Custom… |
+| Calendar icon | In notch (default): opens Set Date in the notch. Popover style: presets menu (in 1 hour, this evening, tomorrow, weekend, next week) or Custom… |
 | `⌘D`, Custom…, the date chip | Set Date: type a date (“zítra 14:00”, “fri 2pm”, “+2h”), pick a preset (`⌘1`…`⌘6`), or set day and time (`⌘K` calendar). By default the black notch panel grows to show it; Settings → Date picker style → Popover shows it in a popover instead |
 | Location icon | Add a location note (appended to Notes as 📍 …) |
 | Flag icon | Toggle flagged (orange) — stored as High priority, EventKit exposes no flag |

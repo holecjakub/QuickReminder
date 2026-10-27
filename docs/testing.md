@@ -64,7 +64,7 @@ screenshot and a per-scenario log land under `build/e2e/<timestamp>/`, so a
 Scenarios: `hotkey_open_close`, `type_suggestion_tab`, `czech_suggestion`,
 `click_notch_opens`, `hover_swell`, `quick_crossing_no_swell`,
 `click_outside_closes`, `margin_click_closes`, `reopen_during_close`,
-`date_menu_preset` (calendar menu → This Weekend by keyboard → accent chip),
+`date_menu_preset` (popover style only: calendar menu → This Weekend by keyboard → accent chip),
 `schedule_popover_typed` (⌘D → `zítra 14:00` → ↩ → accent chip),
 `schedule_popover_preset_shortcut` (⌘D → ⌘3 → Tomorrow chip),
 `schedule_popover_esc` (Esc closes only the popover, the panel stays open; a
