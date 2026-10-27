@@ -20,7 +20,7 @@ struct QuickReminderView: View {
     @State private var notes: String = ""
     @State private var dueDate: Date? = nil
     @State private var flagged: Bool = false
-    @State private var locationText: String = ""
+    @State private var location = ReminderLocation()
     @State private var showListPicker: Bool = false
     @State private var showLocationField: Bool = false
     /// The Set Date popover (Popover style only). The in-notch sections have no flags of their own:
@@ -101,7 +101,7 @@ struct QuickReminderView: View {
                 .notchSectionTransition()
             } else if locationInNotch {
                 LocationNotchSection(
-                    locationText: $locationText,
+                    location: $location,
                     accent: accent,
                     onClose: { PanelController.shared.setSection(.none) },
                     onSaveReminder: { saveReminder(afterSection: true) },
@@ -187,7 +187,7 @@ struct QuickReminderView: View {
             BottomBar(
                 dueDate: $dueDate,
                 flagged: $flagged,
-                locationText: $locationText,
+                location: $location,
                 canSave: canSave,
                 onSave: { saveReminder() },
                 showLocationField: $showLocationField,
@@ -384,7 +384,7 @@ struct QuickReminderView: View {
                 calendarID: selectedListId.isEmpty ? nil : selectedListId,
                 dueDate: dueDate,
                 flagged: flagged,
-                location: locationText.isEmpty ? nil : locationText
+                location: location.isEmpty ? nil : location
             )
             PanelController.shared.collapseAfterSave()
         } catch {
@@ -403,7 +403,7 @@ struct QuickReminderView: View {
         notes = ""
         dueDate = nil
         flagged = false
-        locationText = ""
+        location = ReminderLocation()
         saveErrorText = nil
         suggestion = nil
         dismissedSuggestionText = nil

@@ -1,3 +1,4 @@
+import CoreLocation
 import EventKit
 import Foundation
 import SwiftUI
@@ -87,29 +88,54 @@ final class RemindersService: ObservableObject {
         calendarID: String?,
         dueDate: Date?,
         flagged: Bool,
-        location: String?
+        location: ReminderLocation?
     ) throws {
         guard hasAccess else { throw SaveError.noAccess }
         let reminder = EKReminder(eventStore: store)
         reminder.title = title
-        reminder.notes = Self.buildNotes(notes: notes, location: location)
         reminder.calendar = calendar(for: calendarID)
-
-        if let date = dueDate {
-            var comps = Calendar.current.dateComponents(
-                [.year, .month, .day, .hour, .minute],
-                from: date
-            )
-            comps.timeZone = TimeZone.current
-            reminder.dueDateComponents = comps
-            reminder.addAlarm(EKAlarm(absoluteDate: date))
-        }
+        Self.fill(reminder, notes: notes, dueDate: dueDate, location: location)
 
         if flagged {
             reminder.priority = Int(EKReminderPriority.high.rawValue)
         }
 
         try store.save(reminder, commit: true)
+    }
+
+    /// Notes, due date and alarms, the part of a save that needs no store (unit-tested with a fake
+    /// target). The due date gets its time alarm; a picked place gets a location alarm next to it
+    /// (`LocationSavePlan.structured`: an `EKStructuredLocation` with coordinates and a radius,
+    /// `.enter` for Arriving, `.leave` for Leaving), the way Reminders' own "When arriving / When
+    /// leaving" works, and no `📍` note line. Free text has no coordinates and stays a note line.
+    nonisolated static func fill(_ target: some ReminderAlarmTarget, notes: String, dueDate: Date?,
+                                 location: ReminderLocation?, timeZone: TimeZone = .current,
+                                 calendar: Calendar = .current) {
+        let plan = LocationSavePlan.plan(for: location)
+        target.notes = buildNotes(notes: notes, location: plan.noteLineText)
+
+        if let date = dueDate {
+            var comps = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
+            comps.timeZone = timeZone
+            target.dueDateComponents = comps
+            target.addAlarm(EKAlarm(absoluteDate: date))
+        }
+
+        if case .structured(let spec) = plan {
+            target.addAlarm(locationAlarm(spec))
+        }
+    }
+
+    /// A Reminders location alarm: the structured location (title, coordinate, radius) and the
+    /// proximity that triggers it.
+    nonisolated static func locationAlarm(_ spec: LocationAlarmSpec) -> EKAlarm {
+        let place = EKStructuredLocation(title: spec.title)
+        place.geoLocation = CLLocation(latitude: spec.latitude, longitude: spec.longitude)
+        place.radius = spec.radius
+        let alarm = EKAlarm()
+        alarm.structuredLocation = place
+        alarm.proximity = spec.proximity == .arriving ? .enter : .leave
+        return alarm
     }
 
     enum SaveError: LocalizedError {
@@ -121,9 +147,10 @@ final class RemindersService: ObservableObject {
         }
     }
 
-    /// Notes as saved: the notes, then the location as `📍 …`. The location is trimmed here and
-    /// only here, so the popover and the in-notch Location section store exactly the same text
-    /// (whitespace-only means no location).
+    /// Notes as saved: the notes, then a free-text location as `📍 …` (`LocationSavePlan.noteLine`;
+    /// a picked place is a real location instead). The location is trimmed here too, so the
+    /// popover and the in-notch Location section store exactly the same text (whitespace-only means
+    /// no location).
     nonisolated static func buildNotes(notes: String, location: String?) -> String? {
         var parts: [String] = []
         if !notes.isEmpty { parts.append(notes) }
@@ -131,3 +158,13 @@ final class RemindersService: ObservableObject {
         return parts.isEmpty ? nil : parts.joined(separator: "\n")
     }
 }
+
+/// The part of `EKReminder` a save fills in besides title, list and priority, so the mapping can
+/// be tested without an event store.
+protocol ReminderAlarmTarget: AnyObject {
+    var notes: String? { get set }
+    var dueDateComponents: DateComponents? { get set }
+    func addAlarm(_ alarm: EKAlarm)
+}
+
+extension EKReminder: ReminderAlarmTarget {}

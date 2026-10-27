@@ -207,23 +207,35 @@ enum NotchLayout {
         contentHeight(textScale: s) + ScheduleMetrics.sectionHeight(textScale: s, calendar: calendar) + Theme.horizontalPadding
     }
 
-    /// In-notch Location: the plain panel stays as it is and the short Location section (field +
-    /// footer, `LocationMetrics`) is appended below it, ending `Theme.horizontalPadding` above the
+    /// In-notch Location: the plain panel stays as it is and the Location section (field, suggestion
+    /// list, footer, `LocationMetrics`) is appended below it, ending `Theme.horizontalPadding` above the
     /// grown body edge (`NotchStateTests.locationHeightFollowsTheRhythm`).
     @MainActor static func locationContentHeight(textScale s: CGFloat) -> CGFloat {
         contentHeight(textScale: s) + LocationMetrics.sectionHeight(textScale: s) + Theme.horizontalPadding
     }
 
-    /// The Location section: the field, then the footer (Clear · Cancel · Done), with Set Date's
-    /// control metrics so the two sections read as one family.
+    /// The Location section: the field, the Apple Maps suggestion list, then the footer (Arriving /
+    /// Leaving · Clear · Cancel · Done), with Set Date's control metrics so the two sections read as
+    /// one family. The list always reserves `PlaceSearchModel.maxRows` rows, whatever it shows (rows,
+    /// a picked place, the hint, "No places found", an error), so typing never resizes the blob.
     enum LocationMetrics {
         static let field: CGFloat = ScheduleMetrics.typeField     // 36
+        static let listGap: CGFloat = 6
+        /// Title + subtitle row.
+        static let row: CGFloat = 34
+        static let rows: Int = PlaceSearchModel.maxRows           // 5
         static let footerGap: CGFloat = ScheduleMetrics.footerGap // 14
         static let footer: CGFloat = ScheduleMetrics.footer       // 36
+        /// Rows inset from the list's edges, concentric with the field's 12 pt corners.
+        static let rowRadius: CGFloat = 8
+
+        @MainActor static func listHeight(textScale s: CGFloat) -> CGFloat {
+            CGFloat(rows) * (row * s).rounded(.toNearestOrEven)
+        }
 
         @MainActor static func sectionHeight(textScale s: CGFloat) -> CGFloat {
             func sc(_ v: CGFloat) -> CGFloat { (v * s).rounded(.toNearestOrEven) }
-            return sc(field) + footerGap + sc(footer)
+            return sc(field) + listGap + listHeight(textScale: s) + footerGap + sc(footer)
         }
     }
 
