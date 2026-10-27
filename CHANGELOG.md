@@ -4,6 +4,8 @@ All notable changes to QuickReminder. Format: [Keep a Changelog](https://keepach
 
 ## Unreleased
 
+- In notch style, the calendar button in the bottom bar opens Set Date in the notch directly; it used to open the old native preset menu first (Custom… led to the notch). The popover style keeps the menu.
+
 ## 0.5.1
 
 - Labels on the list colour (Set, the selected time chip, the picked day) are white again on blue, purple and red lists, as on macOS's own buttons; only light colours (orange, green, yellow, light blue), where white falls under 3:1, get a dark label. 0.5.0 required 4.5:1 and turned blue lists black.

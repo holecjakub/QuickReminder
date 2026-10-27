@@ -92,11 +92,15 @@ struct BottomBar: View {
     }
 
     @State private var dateMenuPresenter = PopUpMenu()
+    @AppStorage(SetDateStyle.defaultsKey) private var pickerStyle: SetDateStyle = .defaultStyle
 
     /// Rows keep fixed positions (labels adapt, nothing hides), each showing the time it resolves
     /// to, computed when the menu opens.
     private var dateMenu: some View {
         Button {
+            // In notch: the button grows the panel straight into Set Date (its presets replace the
+            // menu's); the native preset menu stays the popover style's entry point.
+            if pickerStyle == .notch { onOpenSetDate(); return }
             let now = AppClock.now
             let presets: [PopUpMenu.Item] = [DatePreset.inOneHour, .evening, .tomorrow, .weekend, .nextWeek].map { preset in
                 let date = DatePreset.date(for: preset, now: now)
