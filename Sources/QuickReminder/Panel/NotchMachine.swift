@@ -98,13 +98,10 @@ enum NotchEffect: Hashable, Sendable {
     case swellHover
     case unswellHover
     case haptic
-    /// Spring the open blob to the given schedule height (the content cross-fades with it).
+    /// Spring the open blob to the given schedule height. The window never resizes for this: in
+    /// notch style the open canvas is already sized for the tallest schedule state
+    /// (`NotchLayout.openCanvasSize`), so only SwiftUI state animates and nothing above moves.
     case animateSchedule(ScheduleExpansion)
-    /// Grow the window + canvas, without animation, to fit the tallest schedule state (top-anchored,
-    /// so nothing visible moves); done once per open, before the blob starts to grow.
-    case growCanvasForSchedule
-    /// Shrink the window + canvas back to the plain open panel once the blob has settled there.
-    case fitCanvasToPanel
 
     // Timers
     case scheduleClose
@@ -133,8 +130,6 @@ struct NotchMachine: Hashable, Sendable {
     private(set) var generation: UInt = 0
     /// In-notch Set Date height of the open panel.
     private(set) var schedule: ScheduleExpansion = .none
-    /// The window is sized for the tallest schedule state (until the blob settles back).
-    private(set) var canvasGrown = false
 
     /// Open or saving: the window is key and the local monitor is installed.
     var isVisible: Bool { phase == .open || phase == .saving }
@@ -178,10 +173,6 @@ struct NotchMachine: Hashable, Sendable {
 
         case .settleTimerFired(let generation):
             guard phase == .open, generation == self.generation else { return [] }
-            if schedule == .none && canvasGrown {
-                canvasGrown = false
-                return [.setSettled(true), .fitCanvasToPanel]
-            }
             return [.setSettled(true)]
 
         case .scheduleChanged(let expansion):
@@ -244,14 +235,7 @@ struct NotchMachine: Hashable, Sendable {
         generation &+= 1
         // The content mask goes back on while the blob springs: the section is laid out at its
         // final height at once and must never show outside the black.
-        var effects: [NotchEffect] = [.setSettled(false)]
-        if expansion != .none && !canvasGrown {
-            canvasGrown = true
-            effects.append(.growCanvasForSchedule)
-        }
-        effects.append(.animateSchedule(expansion))
-        effects.append(.scheduleSettle(generation: generation))
-        return effects
+        return [.setSettled(false), .animateSchedule(expansion), .scheduleSettle(generation: generation)]
     }
 
     private mutating func show() -> [NotchEffect] {
@@ -285,10 +269,7 @@ struct NotchMachine: Hashable, Sendable {
         badgeShown = false
         effects.append(.clearBadgeNoAnimation)
         effects.append(.configureGeometry)
-        if !midCollapse {
-            effects.append(.switchToOpenCanvas)
-            canvasGrown = false   // the open canvas is the plain panel again
-        }
+        if !midCollapse { effects.append(.switchToOpenCanvas) }
         schedule = .none
         effects.append(.setIgnoresMouse(false))
         effects.append(.makeKeyAndOrderFront)
@@ -317,7 +298,6 @@ struct NotchMachine: Hashable, Sendable {
 
     private mutating func park(pointerOnNotch: Bool) -> NotchEffect {
         phase = .closed(parked: true)
-        canvasGrown = false    // the parked window is the small closed canvas
         hoverSwollen = false   // parking resets the swell without animation
         // Hover arms from where the pointer actually is: still on the notch → wait for it to
         // leave first; anywhere else → the next entry swells immediately.
@@ -327,7 +307,6 @@ struct NotchMachine: Hashable, Sendable {
 
     private mutating func orderOut() -> NotchEffect {
         phase = .closed(parked: false)
-        canvasGrown = false
         hoverSwollen = false   // nothing is on screen; the next park / open resets the swell anyway
         return .orderOut
     }

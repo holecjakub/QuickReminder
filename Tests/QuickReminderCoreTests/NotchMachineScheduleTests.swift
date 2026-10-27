@@ -3,7 +3,8 @@ import Testing
 @testable import QuickReminderCore
 
 /// The in-notch Set Date variant: the open blob grows for the schedule controls / the month grid
-/// and settles back, with the window canvas grown once and fitted again after the spring.
+/// and settles back. No effect ever touches the window during a schedule change: the open canvas
+/// is already sized for the tallest state at open (`NotchLayout.openCanvasSize`).
 struct NotchMachineScheduleTests {
 
     private static func openMachine() -> NotchMachine {
@@ -12,15 +13,26 @@ struct NotchMachineScheduleTests {
         return m
     }
 
-    @Test func openingTheScheduleGrowsCanvasThenAnimatesUnderTheMask() {
+    /// Only SwiftUI state springs: no window / canvas effect, so nothing above the bar can shift.
+    @Test func openingTheScheduleOnlyAnimatesUnderTheMask() {
         var m = Self.openMachine()
         let before = m.generation
         let effects = m.handle(.scheduleChanged(.controls))
         #expect(m.schedule == .controls)
-        #expect(m.canvasGrown)
         #expect(m.generation == before + 1)
-        #expect(effects == [.setSettled(false), .growCanvasForSchedule, .animateSchedule(.controls),
-                            .scheduleSettle(generation: before + 1)])
+        #expect(effects == [.setSettled(false), .animateSchedule(.controls), .scheduleSettle(generation: before + 1)])
+    }
+
+    /// Every schedule step, there and back, is the same three effects — none of them geometry.
+    @Test func noScheduleStepTouchesTheWindow() {
+        var m = Self.openMachine()
+        let windowEffects: [NotchEffect] = [.configureGeometry, .switchToOpenCanvas, .relayoutOpenWindow, .park, .orderOut]
+        for step: ScheduleExpansion in [.controls, .calendar, .controls, .none, .calendar, .none] {
+            let effects = m.handle(.scheduleChanged(step))
+            #expect(effects == [.setSettled(false), .animateSchedule(step), .scheduleSettle(generation: m.generation)], "\(step)")
+            #expect(!effects.contains(where: windowEffects.contains))
+            #expect(m.handle(.settleTimerFired(generation: m.generation)) == [.setSettled(true)])
+        }
     }
 
     @Test func calendarToggleOnlyAnimatesTheCanvasIsAlreadyTallEnough() {
@@ -40,7 +52,7 @@ struct NotchMachineScheduleTests {
         #expect(m.phase == .open)
         #expect(m.schedule == .none)
         #expect(effects == [.setSettled(false), .animateSchedule(.none), .scheduleSettle(generation: m.generation)])
-        #expect(m.handle(.settleTimerFired(generation: m.generation)) == [.setSettled(true), .fitCanvasToPanel])
+        #expect(m.handle(.settleTimerFired(generation: m.generation)) == [.setSettled(true)])
         // Plain and open: a further show is still a no-op.
         #expect(m.handle(.show).isEmpty)
         // And the section can be opened again afterwards (the machine is not stuck).
@@ -67,24 +79,13 @@ struct NotchMachineScheduleTests {
         #expect(closed.handle(.scheduleChanged(.calendar)).isEmpty)
     }
 
-    /// Set / Cancel / Esc: the blob springs back, the mask stays on until it settles, and only then
-    /// is the canvas fitted to the plain panel again (shrinking earlier would clip the spring).
-    @Test func closingSettlesThenFitsTheCanvas() {
+    /// Set / Cancel / Esc: the blob springs back under the mask, which drops once it settles.
+    @Test func closingSettlesUnderTheMask() {
         var m = Self.openMachine()
         _ = m.handle(.scheduleChanged(.calendar))
         let effects = m.handle(.scheduleChanged(.none))
         #expect(effects == [.setSettled(false), .animateSchedule(.none), .scheduleSettle(generation: m.generation)])
-        #expect(m.canvasGrown, "canvas stays tall while the blob shrinks")
-        let settled = m.handle(.settleTimerFired(generation: m.generation))
-        #expect(settled == [.setSettled(true), .fitCanvasToPanel])
-        #expect(!m.canvasGrown)
-    }
-
-    @Test func settleWhileStillScheduledKeepsTheTallCanvas() {
-        var m = Self.openMachine()
-        _ = m.handle(.scheduleChanged(.controls))
         #expect(m.handle(.settleTimerFired(generation: m.generation)) == [.setSettled(true)])
-        #expect(m.canvasGrown)
     }
 
     @Test func staleSettleFromBeforeTheScheduleChangeIsDropped() {
@@ -107,29 +108,30 @@ struct NotchMachineScheduleTests {
         #expect(s.schedule == .none)
     }
 
-    @Test func reopenStartsPlainAndParkingForgetsTheTallCanvas() {
+    /// The canvas is sized once per open (`switchToOpenCanvas`), which also resets the schedule.
+    @Test func reopenSizesTheCanvasOnceAndStartsPlain() {
         var m = NotchMachine()
         _ = m.handle(.screenChanged(hasNotch: true))
-        _ = m.handle(.show)
+        let firstOpen = m.handle(.show)
+        #expect(firstOpen.filter { $0 == .switchToOpenCanvas }.count == 1)
         _ = m.handle(.scheduleChanged(.controls))
         _ = m.handle(.hide)
         _ = m.handle(.closeTimerFired(hasNotch: true))
         #expect(m.phase == .closed(parked: true))
-        #expect(!m.canvasGrown)
-        _ = m.handle(.show)
+        let reopen = m.handle(.show)
+        #expect(reopen.contains(.switchToOpenCanvas))
         #expect(m.schedule == .none)
-        #expect(!m.canvasGrown)
     }
 
-    /// Reopening mid-collapse keeps the (still tall) window; the next settle fits it.
-    @Test func reopenMidCollapseFitsTheGrownCanvasOnSettle() {
+    /// Reopening mid-collapse keeps the open window as it is (same size, no switch).
+    @Test func reopenMidCollapseKeepsTheWindow() {
         var m = Self.openMachine()
         _ = m.handle(.scheduleChanged(.controls))
         _ = m.handle(.hide)
         let effects = m.handle(.show)
         #expect(!effects.contains(.switchToOpenCanvas))
-        #expect(m.canvasGrown)
-        #expect(m.handle(.settleTimerFired(generation: m.generation)) == [.setSettled(true), .fitCanvasToPanel])
+        #expect(m.schedule == .none)
+        #expect(m.handle(.settleTimerFired(generation: m.generation)) == [.setSettled(true)])
     }
 
     @Test func screenChangeWhileScheduledRelayoutsTheOpenWindow() {

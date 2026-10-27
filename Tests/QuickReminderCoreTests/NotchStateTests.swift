@@ -198,4 +198,31 @@ struct NotchStateTests {
         #expect(!NotchLayout.clickCancelsSchedule(atY: sectionTop + 1, bandBottom: bandBottom, schedule: .controls), "inside the section")
         #expect(!NotchLayout.clickCancelsSchedule(atY: bandBottom - 30, bandBottom: bandBottom, schedule: .none), "nothing to cancel")
     }
+
+    // MARK: - Open canvas (constant from open to close)
+
+    /// In notch style the open window is sized at open for the tallest Set Date state, so the
+    /// blob grows inside it without the window ever resizing; the popover style keeps the plain one.
+    @Test func openCanvasFitsTheTallestScheduleStateInNotchStyle() {
+        let band = NotchLayout.defaultNotchBandHeight
+        let plain = NotchLayout.openSize(notchBandHeight: band)
+        let calendar = NotchLayout.openSize(notchBandHeight: band, schedule: .calendar)
+        let notch = NotchLayout.openCanvasSize(openSize: plain, tallestScheduleSize: calendar, style: .notch)
+        #expect(notch == NotchLayout.canvasSize(for: calendar))
+        #expect(notch.height >= NotchLayout.openSize(notchBandHeight: band, schedule: .controls).height + NotchLayout.overshootPadding,
+                "every schedule state plus the overshoot room fits")
+        #expect(NotchLayout.openCanvasSize(openSize: plain, tallestScheduleSize: calendar, style: .popover)
+                == NotchLayout.canvasSize(for: plain))
+        // A clamped (shorter) schedule size never makes the canvas smaller than the plain panel's.
+        let tiny = CGSize(width: plain.width, height: plain.height - 50)
+        #expect(NotchLayout.openCanvasSize(openSize: plain, tallestScheduleSize: tiny, style: .notch) == NotchLayout.canvasSize(for: plain))
+    }
+
+    /// At 100 % text size with a 39 pt band: 751 pt calendar blob + 24 pt overshoot, 648 pt wide.
+    @Test func openCanvasAtDefaultTextSize() {
+        let plain = CGSize(width: 600, height: 39 + 202)
+        let calendar = CGSize(width: 600, height: 39 + 712)
+        #expect(NotchLayout.openCanvasSize(openSize: plain, tallestScheduleSize: calendar, style: .notch) == CGSize(width: 648, height: 775))
+        #expect(NotchLayout.openCanvasSize(openSize: plain, tallestScheduleSize: calendar, style: .popover) == CGSize(width: 648, height: 265))
+    }
 }

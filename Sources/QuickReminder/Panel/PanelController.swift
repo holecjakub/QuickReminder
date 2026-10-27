@@ -130,8 +130,11 @@ final class PanelController {
             guard let screen else { return }
             let window = ensureWindow(on: screen)
             var noAnim = Transaction(); noAnim.disablesAnimations = true
+            // The style is read once per open: the canvas is sized for it and stays that size until
+            // the panel closes (Set Date never resizes the window).
+            openStyle = Self.currentSetDateStyle
             withTransaction(noAnim) {
-                state.canvasSize = NotchLayout.canvasSize(for: state.openSize)
+                state.canvasSize = openCanvasSize
                 if state.schedule != .none { state.schedule = .none }   // every open starts plain
             }
             window.setFrame(windowFrame(for: screen), display: false)
@@ -230,12 +233,6 @@ final class PanelController {
         case .animateSchedule(let expansion):
             withAnimation(NotchLayout.effectiveSchedule) { state.schedule = expansion }
 
-        case .growCanvasForSchedule, .fitCanvasToPanel:
-            // Top-anchored and centred like the open canvas, so the visible blob does not move.
-            guard let screen = screen ?? targetScreen(), let window else { return }
-            var noAnim = Transaction(); noAnim.disablesAnimations = true
-            withTransaction(noAnim) { state.canvasSize = openCanvasSize }
-            window.setFrame(windowFrame(for: screen), display: true)
 
         // Timers
         case .scheduleClose:
@@ -385,9 +382,18 @@ final class PanelController {
         if state.closedSize != size { state.closedSize = size }
     }
 
-    /// The open canvas: the plain panel, or the tallest schedule state while the blob may grow.
+    /// Set Date style as of the current open (see `.switchToOpenCanvas`).
+    private var openStyle: SetDateStyle = .defaultStyle
+
+    /// The open canvas, constant from open to close (`NotchLayout.openCanvasSize`).
     private var openCanvasSize: CGSize {
-        NotchLayout.canvasSize(for: machine.canvasGrown ? state.scheduleCalendarSize : state.openSize)
+        NotchLayout.openCanvasSize(openSize: state.openSize, tallestScheduleSize: state.scheduleCalendarSize,
+                                   style: openStyle)
+    }
+
+    /// The persisted style (`-datePickerStyle` in the argument domain overrides it for a run).
+    private static var currentSetDateStyle: SetDateStyle {
+        UserDefaults.standard.string(forKey: SetDateStyle.defaultsKey).flatMap(SetDateStyle.init(rawValue:)) ?? .defaultStyle
     }
 
     /// Window covers the fully-open panel, anchored to the top edge, centred on the notch.

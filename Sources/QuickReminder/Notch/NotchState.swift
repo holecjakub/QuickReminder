@@ -230,6 +230,19 @@ enum NotchLayout {
     /// Window / container size: open panel plus overshoot room on the sides and bottom.
     @MainActor static var canvasSize: CGSize { canvasSize(for: openSize) }
 
+    /// The window / canvas while the panel is open, set once per open (`switchToOpenCanvas`) and
+    /// never changed by Set Date. In notch style it already fits the tallest schedule state (the
+    /// calendar, screen-clamped), so growing and shrinking the blob only animates SwiftUI state:
+    /// resizing the window mid-spring made AppKit and SwiftUI disagree for a frame (a blank panel,
+    /// then the content offset and springing back). The transparent area below the black passes
+    /// clicks through (`NotchWindow`) and the local monitor still hit-tests the silhouette.
+    static func openCanvasSize(openSize: CGSize, tallestScheduleSize: CGSize, style: SetDateStyle) -> CGSize {
+        switch style {
+        case .notch: return canvasSize(for: CGSize(width: openSize.width, height: max(openSize.height, tallestScheduleSize.height)))
+        case .popover: return canvasSize(for: openSize)
+        }
+    }
+
     static func canvasSize(for openSize: CGSize) -> CGSize {
         CGSize(width: openSize.width + 2 * overshootPadding, height: openSize.height + overshootPadding)
     }
