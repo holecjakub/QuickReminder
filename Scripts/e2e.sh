@@ -50,7 +50,7 @@ while [[ $# -gt 0 ]]; do
         --picker-style) PICKER_STYLE="$2"; shift 2 ;;
         --no-catcher) CATCHER=0; shift ;;
         -h|--help)
-            sed -n '2,24p' "$0"
+            sed -n '2,26p' "$0"
             exit 0
             ;;
         *)
