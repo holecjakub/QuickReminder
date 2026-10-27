@@ -4,6 +4,8 @@ All notable changes to QuickReminder. Format: [Keep a Changelog](https://keepach
 
 ## Unreleased
 
+## 0.5.3
+
 - **Location in the notch.** In notch style the location button no longer opens a glass popover: the panel grows a Location section below the bottom bar, with the same motion as Set Date (Clear · Cancel · Done, ↩ = Done, Esc / Cancel keep the old location, ✓ applies an edit and saves). One section is open at a time; the location and calendar buttons (and `⌘D`) switch between them, and switching keeps what you typed: an edited location or date is applied before the other section opens (a typed date that is not one beeps and stays). The popover style keeps the popover. The location is trimmed the same way in both styles.
 - **Set Date in the notch keeps the panel as it is.** Opening it (calendar button, `⌘D`, the date chip) no longer redraws the panel: the header, title, notes and the bottom bar with ✓ stay where they are, and the panel only grows downward with Set Date added below the bottom bar. The calendar button closes it again. ✓ while it is open saves the reminder with the date you edited there (an untouched Set Date leaves the date as it was; a typed date or time that is not one beeps and nothing is saved). ⌘↩ keeps meaning Set while it is open, even with the ✓ now on screen. Esc closes an open list or location popover first. On short screens only the Set Date part scrolls, keeping the field, time row or picked day in view.
 - Opening and closing Set Date in the notch no longer blinks or shifts the panel: the window keeps one size from open to close (sized for Set Date's calendar when the panel opens), so only the black shape grows. Clicks, scrolls and hovers beside or below the black shape reach the app there, as before.
