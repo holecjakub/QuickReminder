@@ -30,23 +30,31 @@ final class NotchState: ObservableObject {
     /// Size of the fully expanded panel.
     @Published var openSize: CGSize = NotchLayout.openSize
     /// In-notch Set Date: the open panel grown by the scheduling controls / plus the month grid.
-    @Published var scheduleSize: CGSize = NotchLayout.openSize(notchBandHeight: NotchLayout.defaultNotchBandHeight, schedule: .controls)
-    @Published var scheduleCalendarSize: CGSize = NotchLayout.openSize(notchBandHeight: NotchLayout.defaultNotchBandHeight, schedule: .calendar)
-    /// How far the open panel is grown for the in-notch Set Date section (mirrors `NotchMachine.schedule`).
-    @Published var schedule: ScheduleExpansion = .none
+    @Published var scheduleSize: CGSize = NotchLayout.openSize(notchBandHeight: NotchLayout.defaultNotchBandHeight, section: .controls)
+    @Published var scheduleCalendarSize: CGSize = NotchLayout.openSize(notchBandHeight: NotchLayout.defaultNotchBandHeight, section: .calendar)
+    /// In-notch Location: the open panel grown by the Location section.
+    @Published var locationSize: CGSize = NotchLayout.openSize(notchBandHeight: NotchLayout.defaultNotchBandHeight, section: .location)
+    /// How far the open panel is grown for the in-notch Set Date section (mirrors `NotchMachine.section`).
+    @Published var section: NotchSection = .none
 
     /// Height of the band occupied by the physical notch / menu bar at the top of the panel.
     var notchBandHeight: CGFloat { closedSize.height }
 
     /// The open panel at its current schedule height.
-    var panelSize: CGSize { size(for: schedule) }
+    var panelSize: CGSize { size(for: section) }
 
-    func size(for expansion: ScheduleExpansion) -> CGSize {
-        switch expansion {
+    func size(for section: NotchSection) -> CGSize {
+        switch section {
         case .none: return openSize
-        case .controls: return scheduleSize
-        case .calendar: return scheduleCalendarSize
+        case .schedule(.controls): return scheduleSize
+        case .schedule(.calendar): return scheduleCalendarSize
+        case .location: return locationSize
         }
+    }
+
+    /// The tallest grown state, which the open canvas is sized for (`NotchLayout.openCanvasSize`).
+    var tallestSectionSize: CGSize {
+        [scheduleSize, scheduleCalendarSize, locationSize].max { $0.height < $1.height } ?? scheduleCalendarSize
     }
 
     var currentSize: CGSize {
@@ -96,11 +104,18 @@ enum NotchLayout {
     /// never taller than `maxHeight` (see `maxPanelHeight`) and never shorter than the plain
     /// panel. The plain panel is a fixed top part either way; when clamped, only the section's rows
     /// scroll (between the bottom bar above and the section's own pinned footer).
-    @MainActor static func openSize(notchBandHeight: CGFloat, schedule: ScheduleExpansion,
+    @MainActor static func openSize(notchBandHeight: CGFloat, section: NotchSection,
                                     maxHeight: CGFloat = .infinity) -> CGSize {
         let plain = openSize(notchBandHeight: notchBandHeight)
-        guard schedule != .none else { return plain }
-        let natural = notchBandHeight + scheduleContentHeight(textScale: textScale, calendar: schedule == .calendar)
+        guard section != .none else { return plain }
+        let natural: CGFloat
+        switch section {
+        case .none: return plain
+        case .schedule(let depth):
+            natural = notchBandHeight + scheduleContentHeight(textScale: textScale, calendar: depth == .calendar)
+        case .location:
+            natural = notchBandHeight + locationContentHeight(textScale: textScale)
+        }
         return CGSize(width: plain.width, height: max(plain.height, min(natural, maxHeight.rounded(.down))))
     }
 
@@ -124,17 +139,17 @@ enum NotchLayout {
 
     /// A click on the header / title / notes while the section is open cancels scheduling, like a
     /// click outside the popover; the click still reaches what it landed on.
-    static func clickCancelsSchedule(atY y: CGFloat, bandBottom: CGFloat, schedule: ScheduleExpansion) -> Bool {
-        schedule != .none && y < bandBottom
+    static func clickCancelsSection(atY y: CGFloat, bandBottom: CGFloat, section: NotchSection) -> Bool {
+        section != .none && y < bandBottom
     }
 
     /// The decision the panel's mouse-down monitor makes, from a top-down point in the hosting
     /// view: only the header / title / notes band cancels — never the chip slot, the bottom bar
     /// (its ✓ must reach `prepareSave` with the edit intact) or the section.
-    @MainActor static func clickCancelsSchedule(atY y: CGFloat, notchBandHeight: CGFloat, textScale s: CGFloat,
-                                                schedule: ScheduleExpansion) -> Bool {
-        clickCancelsSchedule(atY: y, bandBottom: scheduleCancelBandBottom(notchBandHeight: notchBandHeight, textScale: s),
-                             schedule: schedule)
+    @MainActor static func clickCancelsSection(atY y: CGFloat, notchBandHeight: CGFloat, textScale s: CGFloat,
+                                                section: NotchSection) -> Bool {
+        clickCancelsSection(atY: y, bandBottom: scheduleCancelBandBottom(notchBandHeight: notchBandHeight, textScale: s),
+                             section: section)
     }
 
     /// While the panel is open the window ignores the mouse when the pointer is outside the black
@@ -183,6 +198,26 @@ enum NotchLayout {
         contentHeight(textScale: s) + ScheduleMetrics.sectionHeight(textScale: s, calendar: calendar) + Theme.horizontalPadding
     }
 
+    /// In-notch Location: the plain panel stays as it is and the short Location section (field +
+    /// footer, `LocationMetrics`) is appended below it, ending `Theme.horizontalPadding` above the
+    /// grown body edge (`NotchStateTests.locationHeightFollowsTheRhythm`).
+    @MainActor static func locationContentHeight(textScale s: CGFloat) -> CGFloat {
+        contentHeight(textScale: s) + LocationMetrics.sectionHeight(textScale: s) + Theme.horizontalPadding
+    }
+
+    /// The Location section: the field, then the footer (Clear · Cancel · Done), with Set Date's
+    /// control metrics so the two sections read as one family.
+    enum LocationMetrics {
+        static let field: CGFloat = ScheduleMetrics.typeField     // 36
+        static let footerGap: CGFloat = ScheduleMetrics.footerGap // 14
+        static let footer: CGFloat = ScheduleMetrics.footer       // 36
+
+        @MainActor static func sectionHeight(textScale s: CGFloat) -> CGFloat {
+            func sc(_ v: CGFloat) -> CGFloat { (v * s).rounded(.toNearestOrEven) }
+            return sc(field) + footerGap + sc(footer)
+        }
+    }
+
     /// Vertical metrics of the in-notch Set Date section, at 100 % text size (scaled like `Theme.s`).
     /// Gaps are fixed points, control heights scale.
     enum ScheduleMetrics {
@@ -223,8 +258,8 @@ enum NotchLayout {
 
     /// Blob growth / shrink for the in-notch Set Date section: the open spring's gooey language,
     /// a touch quicker since it is a step within the panel. Reduce Motion: plain ease.
-    static let scheduleAnimation: Animation = .spring(response: 0.38, dampingFraction: 0.8, blendDuration: 0)
-    @MainActor static var effectiveSchedule: Animation { reduceMotion ? reducedMotionAnimation : scheduleAnimation }
+    static let sectionAnimation: Animation = .spring(response: 0.38, dampingFraction: 0.8, blendDuration: 0)
+    @MainActor static var effectiveSection: Animation { reduceMotion ? reducedMotionAnimation : sectionAnimation }
     /// System text size (System Settings → Accessibility → Display → Text size, or per-app),
     /// relative to the default 13 pt body. Read live so every open reflects the current setting.
     @MainActor static var textScale: CGFloat {
@@ -259,9 +294,9 @@ enum NotchLayout {
     /// the mouse whenever the pointer is outside the black shape (`passesMouseThrough`, driven by
     /// pointer monitors in `PanelController`): those clicks reach the app below, and the global
     /// click monitor closes the panel.
-    static func openCanvasSize(openSize: CGSize, tallestScheduleSize: CGSize, style: SetDateStyle) -> CGSize {
+    static func openCanvasSize(openSize: CGSize, tallestSectionSize: CGSize, style: SetDateStyle) -> CGSize {
         switch style {
-        case .notch: return canvasSize(for: CGSize(width: openSize.width, height: max(openSize.height, tallestScheduleSize.height)))
+        case .notch: return canvasSize(for: CGSize(width: openSize.width, height: max(openSize.height, tallestSectionSize.height)))
         case .popover: return canvasSize(for: openSize)
         }
     }

@@ -15,6 +15,8 @@
 #   Scripts/e2e.sh --with-save      also run save_choreography (creates a
 #                                    real reminder in the user's Reminders --
 #                                    off by default)
+#   Scripts/e2e.sh --no-catcher      skip the disposable TextEdit window that
+#                                    catches stray clicks / keystrokes (below)
 #   Scripts/e2e.sh --picker-style popover|notch
 #                                   Set Date style for the test instance
 #                                    (argument domain, nothing persisted);
@@ -36,6 +38,8 @@ KEEP=0
 ONLY=""
 WITH_SAVE=0
 PICKER_STYLE=""
+CATCHER=1
+CATCHER_DOC=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -44,6 +48,7 @@ while [[ $# -gt 0 ]]; do
         --only) ONLY="$2"; shift 2 ;;
         --with-save) WITH_SAVE=1; shift ;;
         --picker-style) PICKER_STYLE="$2"; shift 2 ;;
+        --no-catcher) CATCHER=0; shift ;;
         -h|--help)
             sed -n '2,24p' "$0"
             exit 0
@@ -164,9 +169,47 @@ launch_test_instance() {
     fi
 }
 
+# Key / click catcher: a disposable, never-saved TextEdit document covering the area under and
+# around the panel, made frontmost before the run. Clicks the suite sends outside the panel (which
+# the open panel now passes through to whatever is below) and any keystroke that misses the panel
+# land in it instead of the user's apps; whatever it collected is reported as a leak at the end.
+setup_key_catcher() {
+    [[ "$CATCHER" -eq 1 ]] || return 0
+    CATCHER_DOC=$(osascript <<'APPLESCRIPT' 2>/dev/null || true
+tell application "TextEdit"
+    activate
+    set catcherDoc to make new document with properties {text:""}
+    set bounds of front window to {250, 60, 1100, 900}
+    return name of catcherDoc
+end tell
+APPLESCRIPT
+)
+    if [[ -z "$CATCHER_DOC" ]]; then
+        echo "error: could not open the TextEdit key catcher (use --no-catcher to run without it)" >&2
+        exit 2
+    fi
+    sleep 0.6
+    echo "Key catcher: TextEdit document \"$CATCHER_DOC\" (closed unsaved at the end)" >&2
+}
+
+# Prints the number of characters that leaked into the catcher, then closes it without saving.
+teardown_key_catcher() {
+    [[ -n "$CATCHER_DOC" ]] || return 0
+    local leaked
+    leaked=$(osascript -e "tell application \"TextEdit\" to get text of document \"$CATCHER_DOC\"" 2>/dev/null || true)
+    osascript -e "tell application \"TextEdit\" to close document \"$CATCHER_DOC\" saving no" >/dev/null 2>&1 || true
+    CATCHER_DOC=""
+    if [[ -n "${leaked//[[:space:]]/}" ]]; then
+        echo "LEAK: ${#leaked} characters reached the key catcher instead of the panel: $(printf '%q' "$leaked")"
+        return 1
+    fi
+    echo "Key catcher: nothing leaked"
+}
+
 cleanup() {
     if [[ "$CLEANED_UP" -eq 1 ]]; then return; fi
     CLEANED_UP=1
+    teardown_key_catcher || true
     if [[ "$KEEP" -eq 1 ]]; then
         echo "note: --keep set, leaving the E2E test instance running" >&2
         return
@@ -782,6 +825,94 @@ schedule_notch_pill_toggles() {
     assert_closed "schedule_notch_pill_closed" || return 1
 }
 
+# In-notch Location: the location button grows a short Location section below the bar (the bar
+# and ✓ stay), Esc closes only the section, a second Esc the panel. The band checked sits right
+# below the plain panel (y 250-290), inside the ~350 pt Location blob.
+section_band_dark() {
+    # section_band_dark <png> <y> <h> -- dark px in a 500 pt wide band centred in the capture.
+    dark_count "$1" $(( (PANEL_W + 100) / 2 - 250 )) "$2" 500 "$3" 20
+}
+LOCATION_X_OFFSET=124   # calendar icon at +69, pill icons 55 pt apart
+
+schedule_notch_location() {
+    if [[ "${PICKER_STYLE:-notch}" == "popover" ]]; then
+        echo "SKIP:picker style is popover"
+        return 2
+    fi
+    local region="$(( PANEL_LEFT - 50 )),0,$(( PANEL_W + 100 )),$SCHEDULE_REGION_H"
+    local area=$(( 500 * 40 * 4 )) gain=$(( 500 * 40 * 4 * 2 / 5 ))
+    hotkey_toggle
+    sleep 0.8
+    assert_open "schedule_notch_location_open" || return 1
+    local png; png=$(shot "schedule_notch_location_before" "$region")
+    local before; before=$(section_band_dark "$png" 250 40)
+    [[ "$before" -le $(( area - gain )) ]] || { echo "SKIP:the desktop below the panel is too dark"; return 2; }
+    click_at "$(( PANEL_LEFT + LOCATION_X_OFFSET ))" 197
+    sleep 0.8
+    png=$(shot "schedule_notch_location_shown" "$region")
+    local band; band=$(section_band_dark "$png" 250 40)
+    local deep; deep=$(schedule_band_dark "$png" 420)
+    log_step "after the location button: band=$band (before $before), deeper=$deep"
+    [[ "$band" -ge $(( before + gain )) ]] || { fail "expected the location button to grow Location below the bar (dark=$band)"; return 1; }
+    [[ "$deep" -lt $(( 500 * 80 * 4 * 2 / 5 )) ]] || { fail "Location grew as tall as Set Date (dark=$deep)"; return 1; }
+    png=$(shot "schedule_notch_location_bar")
+    assert_save_button_present "$png" || return 1
+    press_escape
+    sleep 0.9
+    png=$(shot "schedule_notch_location_esc" "$region")
+    band=$(section_band_dark "$png" 250 40)
+    log_step "after Esc: band=$band"
+    [[ "$band" -lt $(( before + gain / 4 )) ]] || { fail "expected Esc to close Location (dark=$band)"; return 1; }
+    assert_open "schedule_notch_location_still_open" || return 1
+    press_escape
+    sleep 0.6
+    assert_closed "schedule_notch_location_closed" || return 1
+}
+
+# In-notch: one section at a time. ⌘D opens Set Date, the location button switches to Location (the
+# blob shrinks to it), ⌘D switches back.
+schedule_notch_section_switch() {
+    if [[ "${PICKER_STYLE:-notch}" == "popover" ]]; then
+        echo "SKIP:picker style is popover"
+        return 2
+    fi
+    local region="$(( PANEL_LEFT - 50 )),0,$(( PANEL_W + 100 )),$SCHEDULE_REGION_H"
+    local gain80=$(( 500 * 80 * 4 * 2 / 5 )) gain40=$(( 500 * 40 * 4 * 2 / 5 ))
+    hotkey_toggle
+    sleep 0.8
+    assert_open "schedule_notch_switch_open" || return 1
+    local png; png=$(shot "schedule_notch_switch_before" "$region")
+    local deep0; deep0=$(schedule_band_dark "$png" 420)
+    local near0; near0=$(section_band_dark "$png" 250 40)
+    sleep 0.3
+    press_cmd d
+    sleep 0.8
+    png=$(shot "schedule_notch_switch_setdate" "$region")
+    local deep; deep=$(schedule_band_dark "$png" 420)
+    log_step "Set Date: deep=$deep (before $deep0)"
+    [[ "$deep" -ge $(( deep0 + gain80 )) ]] || { fail "expected Set Date to be open (dark=$deep)"; return 1; }
+    click_at "$(( PANEL_LEFT + LOCATION_X_OFFSET ))" 197
+    sleep 0.9
+    png=$(shot "schedule_notch_switch_location" "$region")
+    deep=$(schedule_band_dark "$png" 420)
+    local near; near=$(section_band_dark "$png" 250 40)
+    log_step "Location: deep=$deep near=$near"
+    [[ "$deep" -lt $(( deep0 + gain80 / 4 )) ]] || { fail "expected Set Date to give way to the shorter Location (dark=$deep)"; return 1; }
+    [[ "$near" -ge $(( near0 + gain40 )) ]] || { fail "expected Location to be open (dark=$near)"; return 1; }
+    press_cmd d
+    sleep 0.9
+    png=$(shot "schedule_notch_switch_back" "$region")
+    deep=$(schedule_band_dark "$png" 420)
+    log_step "back to Set Date: deep=$deep"
+    [[ "$deep" -ge $(( deep0 + gain80 )) ]] || { fail "expected ⌘D to switch back to Set Date (dark=$deep)"; return 1; }
+    press_escape
+    sleep 0.9
+    assert_open "schedule_notch_switch_still_open" || return 1
+    press_escape
+    sleep 0.6
+    assert_closed "schedule_notch_switch_closed" || return 1
+}
+
 # ---------------------------------------------------------------- runner
 
 ALL_SCENARIOS=(
@@ -803,6 +934,8 @@ ALL_SCENARIOS=(
     schedule_notch_click_cancels
     schedule_notch_time_return
     schedule_notch_pill_toggles
+    schedule_notch_location
+    schedule_notch_section_switch
 )
 if [[ "$WITH_SAVE" -eq 1 ]]; then
     ALL_SCENARIOS+=(save_choreography)
@@ -850,6 +983,7 @@ precondition_osascript
 precondition_click_tool
 precondition_display
 launch_test_instance
+setup_key_catcher
 measure_baseline
 
 echo "Screenshots + logs: $RUN_DIR" >&2
@@ -861,6 +995,10 @@ done
 # Leave things closed and tidy before handing back / relaunching.
 reset_to_closed 2>/dev/null || true
 move_to 500 500 2>/dev/null || true
+
+if ! teardown_key_catcher; then
+    FAILURES=$((FAILURES + 1))
+fi
 
 echo "----"
 echo "Failures: $FAILURES"

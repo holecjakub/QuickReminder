@@ -92,15 +92,15 @@ struct NotchStateTests {
         let st = NotchState()
         st.isOpen = true
         #expect(st.currentSize == st.openSize)
-        st.schedule = .controls
+        st.section = .controls
         #expect(st.currentSize == st.scheduleSize)
-        st.schedule = .calendar
+        st.section = .calendar
         #expect(st.currentSize == st.scheduleCalendarSize)
         st.isSaving = true
         #expect(st.currentSize == st.savedSize, "saving still wins")
         st.isSaving = false
         st.isOpen = false
-        #expect(st.currentSize == st.closedSize, "closed ignores a stale schedule")
+        #expect(st.currentSize == st.closedSize, "closed ignores a stale section")
     }
 
     /// The whole plain panel (header … bottom bar + its 20 pt inset) stays as it is and the section
@@ -128,12 +128,12 @@ struct NotchStateTests {
     @Test func scheduleSizesGrowOnlyInHeight() {
         let band = NotchLayout.defaultNotchBandHeight
         let plain = NotchLayout.openSize(notchBandHeight: band)
-        let controls = NotchLayout.openSize(notchBandHeight: band, schedule: .controls)
-        let calendar = NotchLayout.openSize(notchBandHeight: band, schedule: .calendar)
-        #expect(NotchLayout.openSize(notchBandHeight: band, schedule: .none) == plain)
+        let controls = NotchLayout.openSize(notchBandHeight: band, section: .controls)
+        let calendar = NotchLayout.openSize(notchBandHeight: band, section: .calendar)
+        #expect(NotchLayout.openSize(notchBandHeight: band, section: .none) == plain)
         #expect(controls.width == plain.width && calendar.width == plain.width)
         #expect(plain.height < controls.height && controls.height < calendar.height)
-        #expect(NotchLayout.openSize(notchBandHeight: 50, schedule: .calendar).height == calendar.height + 11,
+        #expect(NotchLayout.openSize(notchBandHeight: 50, section: .calendar).height == calendar.height + 11,
                 "the notch band is added on top, not scaled")
         // The tallest state (with the overshoot room) still fits under the menu bar of a 13" Air.
         #expect(NotchLayout.canvasSize(for: calendar).height < 900)
@@ -146,15 +146,15 @@ struct NotchStateTests {
     @Test func scheduleHeightIsClampedToTheScreen() {
         let band = NotchLayout.defaultNotchBandHeight
         let plain = NotchLayout.openSize(notchBandHeight: band)
-        let natural = NotchLayout.openSize(notchBandHeight: band, schedule: .calendar)
-        #expect(NotchLayout.openSize(notchBandHeight: band, schedule: .calendar, maxHeight: natural.height + 100) == natural,
+        let natural = NotchLayout.openSize(notchBandHeight: band, section: .calendar)
+        #expect(NotchLayout.openSize(notchBandHeight: band, section: .calendar, maxHeight: natural.height + 100) == natural,
                 "fits: unchanged")
-        let clamped = NotchLayout.openSize(notchBandHeight: band, schedule: .calendar, maxHeight: 500.7)
+        let clamped = NotchLayout.openSize(notchBandHeight: band, section: .calendar, maxHeight: 500.7)
         #expect(clamped.height == 500, "clamped to the whole point below the limit")
         #expect(clamped.width == natural.width)
-        #expect(NotchLayout.openSize(notchBandHeight: band, schedule: .controls, maxHeight: 100).height == plain.height,
+        #expect(NotchLayout.openSize(notchBandHeight: band, section: .controls, maxHeight: 100).height == plain.height,
                 "never below the plain panel")
-        #expect(NotchLayout.openSize(notchBandHeight: band, schedule: .none, maxHeight: 100) == plain)
+        #expect(NotchLayout.openSize(notchBandHeight: band, section: .none, maxHeight: 100) == plain)
     }
 
     @Test func maxPanelHeightStopsAboveTheDockWithRoomForTheOvershoot() {
@@ -177,8 +177,8 @@ struct NotchStateTests {
     /// meaning (calendar button toggles, date chip no-op, ✓ saves), and the section does not cancel.
     /// Uses the overload the panel's mouse-down monitor calls.
     @Test func clickOnTheTextRowsCancelsScheduling() {
-        func cancels(_ y: CGFloat, _ schedule: ScheduleExpansion = .controls) -> Bool {
-            NotchLayout.clickCancelsSchedule(atY: y, notchBandHeight: 39, textScale: 1, schedule: schedule)
+        func cancels(_ y: CGFloat, _ section: NotchSection = .controls) -> Bool {
+            NotchLayout.clickCancelsSection(atY: y, notchBandHeight: 39, textScale: 1, section: section)
         }
         let bandBottom = NotchLayout.scheduleCancelBandBottom(notchBandHeight: 39, textScale: 1)
         #expect(abs(bandBottom - (39 + 100)) < 0.01, "header + title + notes")
@@ -229,23 +229,57 @@ struct NotchStateTests {
     @Test func openCanvasFitsTheTallestScheduleStateInNotchStyle() {
         let band = NotchLayout.defaultNotchBandHeight
         let plain = NotchLayout.openSize(notchBandHeight: band)
-        let calendar = NotchLayout.openSize(notchBandHeight: band, schedule: .calendar)
-        let notch = NotchLayout.openCanvasSize(openSize: plain, tallestScheduleSize: calendar, style: .notch)
+        let calendar = NotchLayout.openSize(notchBandHeight: band, section: .calendar)
+        let notch = NotchLayout.openCanvasSize(openSize: plain, tallestSectionSize: calendar, style: .notch)
         #expect(notch == NotchLayout.canvasSize(for: calendar))
-        #expect(notch.height >= NotchLayout.openSize(notchBandHeight: band, schedule: .controls).height + NotchLayout.overshootPadding,
-                "every schedule state plus the overshoot room fits")
-        #expect(NotchLayout.openCanvasSize(openSize: plain, tallestScheduleSize: calendar, style: .popover)
+        #expect(notch.height >= NotchLayout.openSize(notchBandHeight: band, section: .controls).height + NotchLayout.overshootPadding,
+                "every section state plus the overshoot room fits")
+        #expect(NotchLayout.openCanvasSize(openSize: plain, tallestSectionSize: calendar, style: .popover)
                 == NotchLayout.canvasSize(for: plain))
         // A clamped (shorter) schedule size never makes the canvas smaller than the plain panel's.
         let tiny = CGSize(width: plain.width, height: plain.height - 50)
-        #expect(NotchLayout.openCanvasSize(openSize: plain, tallestScheduleSize: tiny, style: .notch) == NotchLayout.canvasSize(for: plain))
+        #expect(NotchLayout.openCanvasSize(openSize: plain, tallestSectionSize: tiny, style: .notch) == NotchLayout.canvasSize(for: plain))
     }
 
     /// At 100 % text size with a 39 pt band: 751 pt calendar blob + 24 pt overshoot, 648 pt wide.
     @Test func openCanvasAtDefaultTextSize() {
         let plain = CGSize(width: 600, height: 39 + 202)
         let calendar = CGSize(width: 600, height: 39 + 712)
-        #expect(NotchLayout.openCanvasSize(openSize: plain, tallestScheduleSize: calendar, style: .notch) == CGSize(width: 648, height: 775))
-        #expect(NotchLayout.openCanvasSize(openSize: plain, tallestScheduleSize: calendar, style: .popover) == CGSize(width: 648, height: 265))
+        #expect(NotchLayout.openCanvasSize(openSize: plain, tallestSectionSize: calendar, style: .notch) == CGSize(width: 648, height: 775))
+        #expect(NotchLayout.openCanvasSize(openSize: plain, tallestSectionSize: calendar, style: .popover) == CGSize(width: 648, height: 265))
+    }
+
+    // MARK: - Location section
+
+    /// The plain panel stays and the short Location section (field 36 + 14 + footer 36) is appended.
+    @Test func locationHeightFollowsTheRhythm() {
+        for scale in [0.85, 1.0, 1.3, 1.6] as [CGFloat] {
+            func sc(_ v: CGFloat) -> CGFloat { (v * scale).rounded(.toNearestOrEven) }
+            let section = sc(36) + 14 + sc(36)
+            #expect(NotchLayout.LocationMetrics.sectionHeight(textScale: scale) == section, "section at \(scale)")
+            #expect(NotchLayout.locationContentHeight(textScale: scale)
+                    == NotchLayout.contentHeight(textScale: scale) + section + Theme.horizontalPadding, "content at \(scale)")
+        }
+        #expect(NotchLayout.LocationMetrics.sectionHeight(textScale: 1) == 86)
+        #expect(abs(NotchLayout.locationContentHeight(textScale: 1) - 308) < 0.01, "202 plain + 86 + 20")
+    }
+
+    @Test func locationSizeAndPrecedence() {
+        let band = NotchLayout.defaultNotchBandHeight
+        let plain = NotchLayout.openSize(notchBandHeight: band)
+        let location = NotchLayout.openSize(notchBandHeight: band, section: .location)
+        let controls = NotchLayout.openSize(notchBandHeight: band, section: .controls)
+        #expect(location.width == plain.width)
+        #expect(plain.height < location.height && location.height < controls.height, "Location is the shortest section")
+        #expect(NotchLayout.openSize(notchBandHeight: band, section: .location, maxHeight: plain.height + 10).height == plain.height + 10,
+                "clamped like Set Date")
+
+        let st = NotchState()
+        st.isOpen = true
+        st.section = .location
+        #expect(st.currentSize == st.locationSize)
+        #expect(st.tallestSectionSize == st.scheduleCalendarSize, "the calendar stays the tallest: the canvas does not change")
+        #expect(NotchLayout.clickCancelsSection(atY: 105, notchBandHeight: 39, textScale: 1, section: .location), "title cancels Location too")
+        #expect(!NotchLayout.clickCancelsSection(atY: 197, notchBandHeight: 39, textScale: 1, section: .location), "the bar does not")
     }
 }

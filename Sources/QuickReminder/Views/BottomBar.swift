@@ -19,6 +19,10 @@ struct BottomBar: View {
     /// The in-notch Set Date section is open: the calendar button shows as active, and ⌘↩ belongs
     /// to Set (the ✓ keeps its click).
     let setDateOpen: Bool
+    /// The in-notch Location section is open (location button active, ⌘↩ belongs to Done).
+    let locationOpen: Bool
+    /// The location button in notch style: opens Location below the bar, or closes it again.
+    let onToggleLocation: () -> Void
     /// Which preset wrote the date (menu presets and the popover record it).
     @Binding var presetPick: PresetPick?
     /// The title's live, undismissed date phrase: prefilled into the Set Date popover.
@@ -162,12 +166,21 @@ struct BottomBar: View {
     }
 
     private var locationButton: some View {
-        Button { showLocationField = true } label: {
-            icon(locationText.isEmpty ? "location" : "location.fill", active: !locationText.isEmpty)
+        Button {
+            // In notch: the panel grows into Location (like the calendar button and Set Date);
+            // the glass popover stays the popover style's.
+            if pickerStyle == .notch { onToggleLocation() } else { showLocationField = true }
+        } label: {
+            icon(locationText.isEmpty ? "location" : "location.fill", active: !locationText.isEmpty || locationOpen)
                 .contentTransition(.symbolEffect(.replace))
+                .background(Circle().fill(accent.opacity(locationOpen ? 0.22 : 0)).padding(Theme.s(3)))
+                .animation(HoverMotion.highlightAnimation, value: locationOpen)
         }
         .buttonStyle(HoverHighlightButtonStyle())
         .accessibilityLabel("Add location")
+        .accessibilityValue(locationOpen ? "Location shown" : (locationText.isEmpty ? "" : locationText))
+        .accessibilityAddTraits(pickerStyle == .notch ? .isToggle : [])
+        .accessibilityHint(pickerStyle == .notch ? (locationOpen ? "Hides Location" : "Shows Location below") : "")
         .popover(isPresented: $showLocationField, arrowEdge: .bottom) {
             locationPopover
         }
@@ -208,10 +221,11 @@ struct BottomBar: View {
                 .disabled(!canSave)
                 .animation(.easeInOut(duration: 0.18), value: canSave)
                 .accessibilityLabel("Save reminder")
-                .keyboardShortcut(setDateOpen ? nil : KeyboardShortcut(.return, modifiers: .command))
-                // While Set Date is open ✓ means more than save; say so (ScheduleDraft.prepareSave).
-                .help(setDateOpen ? "Applies the date in Set Date, then saves" : "Save reminder")
-                .accessibilityHint(setDateOpen ? "Applies the date in Set Date, then saves" : "")
+                .keyboardShortcut(setDateOpen || locationOpen ? nil : KeyboardShortcut(.return, modifiers: .command))
+                // While a section is open ✓ means more than save; say so (ScheduleDraft.prepareSave,
+                // LocationDraft.saveDecision).
+                .help(saveHelp)
+                .accessibilityHint(setDateOpen || locationOpen ? saveHelp : "")
             }
         }
     }
@@ -230,6 +244,12 @@ struct BottomBar: View {
             }
         }
         .padding(14)
+    }
+
+    private var saveHelp: String {
+        if setDateOpen { return "Applies the date in Set Date, then saves" }
+        if locationOpen { return "Applies the location, then saves" }
+        return "Save reminder"
     }
 
     private func handleSave() {

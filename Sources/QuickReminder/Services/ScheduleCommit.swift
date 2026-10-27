@@ -33,16 +33,16 @@ enum ScheduleCommit {
 
     /// What ↩ / ⌘↩ in the title or notes does.
     enum TextRowSubmit: Equatable {
-        /// The in-notch Set Date section is open: Set (commit its draft, close it). Never a save,
-        /// never a beep.
-        case setSchedule
+        /// An in-notch section (Set Date or Location) is open: its commit (Set / Done), which also
+        /// closes it. Never a save, never a beep.
+        case commitSection
         case saveReminder
         /// Empty title, nothing to do.
         case none
     }
 
-    static func textRowSubmit(schedulingInNotch: Bool, canSave: Bool) -> TextRowSubmit {
-        if schedulingInNotch { return .setSchedule }
+    static func textRowSubmit(sectionOpen: Bool, canSave: Bool) -> TextRowSubmit {
+        if sectionOpen { return .commitSection }
         return canSave ? .saveReminder : .none
     }
 

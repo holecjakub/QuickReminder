@@ -12,7 +12,7 @@ import SwiftUI
 /// downward (`NotchLayout.scheduleContentHeight`, clamped to the screen, only these rows scroll);
 /// every row's height comes from `NotchLayout.ScheduleMetrics`.
 ///
-/// Shown while `NotchState.schedule != .none` (the one source of truth); `onClose` asks the panel
+/// Shown while `NotchState.section != .none` (the one source of truth); `onClose` asks the panel
 /// to settle back. Nothing reaches `selectedDate` until Set / ↩ / a preset / Clear.
 struct ScheduleNotchSection: View {
     @Binding var selectedDate: Date?
@@ -118,8 +118,8 @@ struct ScheduleNotchSection: View {
         .tint(accent)
         .background(commandReturnTwin)
         .background(calendarShortcut)
-        .onReceive(NotificationCenter.default.publisher(for: .scheduleCommitRequested)) { _ in commit() }
-        .onReceive(NotificationCenter.default.publisher(for: .scheduleSaveRequested)) { _ in saveFromBar() }
+        .onReceive(NotificationCenter.default.publisher(for: .sectionCommitRequested)) { _ in commit() }
+        .onReceive(NotificationCenter.default.publisher(for: .sectionSaveRequested)) { _ in saveFromBar() }
         .onChange(of: model.text) { _, _ in model.announceAfterPause { previewSpoken() } }
         .onChange(of: model.draft) { _, newDraft in
             if focus != .time { syncTimeText() }
