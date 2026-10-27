@@ -825,9 +825,11 @@ schedule_notch_pill_toggles() {
     assert_closed "schedule_notch_pill_closed" || return 1
 }
 
-# In-notch Location: the location button grows a short Location section below the bar (the bar
-# and ✓ stay), Esc closes only the section, a second Esc the panel. The band checked sits right
-# below the plain panel (y 250-290), inside the ~350 pt Location blob.
+# In-notch Location: the location button grows the Location section below the bar (the bar and ✓
+# stay), Esc closes only the section, a second Esc the panel. The band checked sits right below the
+# plain panel (y 250-290); the section reserves room for five Apple Maps suggestions, so the blob
+# reaches ~523 pt (y 420-500 dark too) but stops short of the calendar's ~751 pt (y 560-640 stays
+# as it was).
 section_band_dark() {
     # section_band_dark <png> <y> <h> -- dark px in a 500 pt wide band centred in the capture.
     dark_count "$1" $(( (PANEL_W + 100) / 2 - 250 )) "$2" 500 "$3" 20
@@ -847,15 +849,18 @@ schedule_notch_location() {
     local png; png=$(shot "schedule_notch_location_before" "$region")
     local before; before=$(section_band_dark "$png" 250 40)
     local deep0; deep0=$(schedule_band_dark "$png" 420)   # baseline, like schedule_notch_section_switch
+    local below0; below0=$(schedule_band_dark "$png" 560)
     [[ "$before" -le $(( area - gain )) ]] || { echo "SKIP:the desktop below the panel is too dark"; return 2; }
     click_at "$(( PANEL_LEFT + LOCATION_X_OFFSET ))" 197
     sleep 0.8
     png=$(shot "schedule_notch_location_shown" "$region")
     local band; band=$(section_band_dark "$png" 250 40)
     local deep; deep=$(schedule_band_dark "$png" 420)
-    log_step "after the location button: band=$band (before $before), deeper=$deep"
+    local below; below=$(schedule_band_dark "$png" 560)
+    log_step "after the location button: band=$band (before $before), deeper=$deep (before $deep0), below=$below (before $below0)"
     [[ "$band" -ge $(( before + gain )) ]] || { fail "expected the location button to grow Location below the bar (dark=$band)"; return 1; }
-    [[ "$deep" -lt $(( deep0 + 500 * 80 * 4 * 2 / 5 / 4 )) ]] || { fail "Location grew as tall as Set Date (dark=$deep, before $deep0)"; return 1; }
+    [[ "$deep" -ge $(( deep0 + 500 * 80 * 4 * 2 / 5 )) ]] || { fail "expected the suggestion list's room below the field (dark=$deep, before $deep0)"; return 1; }
+    [[ "$below" -lt $(( below0 + 500 * 80 * 4 * 2 / 5 / 4 )) ]] || { fail "Location grew as tall as the Set Date calendar (dark=$below, before $below0)"; return 1; }
     png=$(shot "schedule_notch_location_bar")
     assert_save_button_present "$png" || return 1
     press_escape
@@ -870,8 +875,11 @@ schedule_notch_location() {
     assert_closed "schedule_notch_location_closed" || return 1
 }
 
-# In-notch: one section at a time. ⌘D opens Set Date, the location button switches to Location (the
-# blob shrinks to it), ⌘D switches back.
+# In-notch: one section at a time. ⌘D opens Set Date, the location button switches to Location, ⌘D
+# switches back. Set Date's controls (~519 pt) and Location with its reserved suggestion list
+# (~523 pt) are about as tall, so the switch itself is not visible in the dark-pixel bands: this
+# checks that the panel stays grown and open through both switches (the switch logic is
+# unit-tested in NotchMachineScheduleTests / LocationDraftTests).
 schedule_notch_section_switch() {
     if [[ "${PICKER_STYLE:-notch}" == "popover" ]]; then
         echo "SKIP:picker style is popover"
@@ -898,7 +906,7 @@ schedule_notch_section_switch() {
     deep=$(schedule_band_dark "$png" 420)
     local near; near=$(section_band_dark "$png" 250 40)
     log_step "Location: deep=$deep near=$near"
-    [[ "$deep" -lt $(( deep0 + gain80 / 4 )) ]] || { fail "expected Set Date to give way to the shorter Location (dark=$deep)"; return 1; }
+    [[ "$deep" -ge $(( deep0 + gain80 )) ]] || { fail "expected Location (with its suggestion room) to keep the blob grown (dark=$deep)"; return 1; }
     [[ "$near" -ge $(( near0 + gain40 )) ]] || { fail "expected Location to be open (dark=$near)"; return 1; }
     press_cmd d
     sleep 0.9
