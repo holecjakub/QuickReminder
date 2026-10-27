@@ -92,7 +92,7 @@ final class RemindersService: ObservableObject {
         guard hasAccess else { throw SaveError.noAccess }
         let reminder = EKReminder(eventStore: store)
         reminder.title = title
-        reminder.notes = buildNotes(notes: notes, location: location)
+        reminder.notes = Self.buildNotes(notes: notes, location: location)
         reminder.calendar = calendar(for: calendarID)
 
         if let date = dueDate {
@@ -121,10 +121,13 @@ final class RemindersService: ObservableObject {
         }
     }
 
-    private func buildNotes(notes: String, location: String?) -> String? {
+    /// Notes as saved: the notes, then the location as `📍 …`. The location is trimmed here and
+    /// only here, so the popover and the in-notch Location section store exactly the same text
+    /// (whitespace-only means no location).
+    nonisolated static func buildNotes(notes: String, location: String?) -> String? {
         var parts: [String] = []
         if !notes.isEmpty { parts.append(notes) }
-        if let loc = location, !loc.isEmpty { parts.append("📍 \(loc)") }
+        if let loc = location?.trimmingCharacters(in: .whitespacesAndNewlines), !loc.isEmpty { parts.append("📍 \(loc)") }
         return parts.isEmpty ? nil : parts.joined(separator: "\n")
     }
 }

@@ -16,6 +16,9 @@ struct LocationNotchSection: View {
     let onClose: () -> Void
     /// ✓ in the bottom bar while the section is open, once the section has applied an edit.
     let onSaveReminder: () -> Void
+    /// Switching to Set Date keeps what was typed here (`LocationDraft.textToKeepOnSwitch`).
+    let handoff: SectionHandoff
+    @State private var handoffToken = UUID()
 
     private typealias M = NotchLayout.LocationMetrics
 
@@ -25,11 +28,12 @@ struct LocationNotchSection: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(locationText: Binding<String>, accent: Color, onClose: @escaping () -> Void,
-         onSaveReminder: @escaping () -> Void) {
+         onSaveReminder: @escaping () -> Void, handoff: SectionHandoff) {
         _locationText = locationText
         self.accent = accent
         self.onClose = onClose
         self.onSaveReminder = onSaveReminder
+        self.handoff = handoff
         _draft = State(initialValue: LocationDraft(original: locationText.wrappedValue))
     }
 
@@ -48,8 +52,13 @@ struct LocationNotchSection: View {
         .onReceive(NotificationCenter.default.publisher(for: .sectionSaveRequested)) { _ in saveFromBar() }
         .onAppear {
             appeared = true
+            handoff.register(handoffToken) {
+                if let text = draft.textToKeepOnSwitch { locationText = text }
+                return true
+            }
             DispatchQueue.main.async { fieldFocused = true }
         }
+        .onDisappear { handoff.unregister(handoffToken) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Location")
     }

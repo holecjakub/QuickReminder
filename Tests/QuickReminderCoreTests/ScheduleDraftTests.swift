@@ -161,4 +161,18 @@ struct ScheduleDraftTests {
         #expect(d.committed)
         #expect(d.prepareSave() == .saveAsIs, "the date is already written; never Set twice")
     }
+
+    /// Switching to Location keeps the Set Date edit, like ✓ without the save.
+    @Test func switchingKeepsTheEdit() throws {
+        #expect(draft().prepareSwitch() == .saveAsIs, "untouched: nothing written")
+        let edited = draft()
+        edited.setTime(hour: 15)
+        guard case let .commitThenSave(outcome) = edited.prepareSwitch() else {
+            Issue.record("expected the edit to be Set"); return
+        }
+        #expect(pragueString(try #require(outcome.date)) == "2026-10-24 15:00")
+        let invalid = draft()
+        invalid.text = "not a date"
+        #expect(invalid.prepareSwitch() == .invalid, "blocks the switch")
+    }
 }

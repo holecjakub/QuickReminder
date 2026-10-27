@@ -163,6 +163,11 @@ final class ScheduleDraft {
         case invalid
     }
 
+    /// Switching to Location while Set Date is open keeps what was done here: the same decision as
+    /// ✓ (an edit is Set, an untouched draft writes nothing, an invalid typed date blocks the
+    /// switch with a beep), without the save.
+    func prepareSwitch() -> SaveDecision { prepareSave() }
+
     func prepareSave() -> SaveDecision {
         guard isDirty, !committed else { return .saveAsIs }
         guard let outcome = set() else { return .invalid }

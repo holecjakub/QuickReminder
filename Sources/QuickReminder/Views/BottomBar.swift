@@ -177,8 +177,10 @@ struct BottomBar: View {
                 .animation(HoverMotion.highlightAnimation, value: locationOpen)
         }
         .buttonStyle(HoverHighlightButtonStyle())
-        .accessibilityLabel("Add location")
-        .accessibilityValue(locationOpen ? "Location shown" : (locationText.isEmpty ? "" : locationText))
+        // The label names the location, the value carries only the open state (like the calendar
+        // toggle's).
+        .accessibilityLabel(locationText.isEmpty ? "Add location" : "Location, \(locationText)")
+        .accessibilityValue(locationOpen ? "Location shown" : "")
         .accessibilityAddTraits(pickerStyle == .notch ? .isToggle : [])
         .accessibilityHint(pickerStyle == .notch ? (locationOpen ? "Hides Location" : "Shows Location below") : "")
         .popover(isPresented: $showLocationField, arrowEdge: .bottom) {

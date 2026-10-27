@@ -29,6 +29,9 @@ struct ScheduleNotchSection: View {
     /// ✓ in the bottom bar while the section is open, once the section has decided
     /// (`ScheduleDraft.prepareSave`): save the reminder.
     let onSaveReminder: () -> Void
+    /// Switching to Location keeps what was done here (`ScheduleDraft.prepareSwitch`).
+    let handoff: SectionHandoff
+    @State private var handoffToken = UUID()
 
     private enum Field: Hashable { case text, time, calendar }
     private typealias M = NotchLayout.ScheduleMetrics
@@ -56,7 +59,7 @@ struct ScheduleNotchSection: View {
     init(selectedDate: Binding<Date?>, presetPick: Binding<PresetPick?>, accent: Color, initialText: String?,
          onConsumeSuggestion: @escaping () -> Void, showsCalendar: Bool,
          onToggleCalendar: @escaping () -> Void, onClose: @escaping () -> Void,
-         onSaveReminder: @escaping () -> Void) {
+         onSaveReminder: @escaping () -> Void, handoff: SectionHandoff) {
         _selectedDate = selectedDate
         _presetPick = presetPick
         self.accent = accent
@@ -65,6 +68,7 @@ struct ScheduleNotchSection: View {
         self.onToggleCalendar = onToggleCalendar
         self.onClose = onClose
         self.onSaveReminder = onSaveReminder
+        self.handoff = handoff
         let model = ScheduleDraft(selected: selectedDate.wrappedValue, initialText: initialText)
         _model = State(initialValue: model)
         _calendarMonth = State(initialValue: MonthGrid.startOfMonth(model.draft))
@@ -133,9 +137,13 @@ struct ScheduleNotchSection: View {
         .onAppear {
             syncTimeText()
             appeared = true
+            handoff.register(handoffToken) { commitForSwitch() }
             DispatchQueue.main.async { focus = .text }
         }
-        .onDisappear { model.cancelAnnouncement() }
+        .onDisappear {
+            model.cancelAnnouncement()
+            handoff.unregister(handoffToken)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Set Date")
     }
@@ -514,5 +522,32 @@ struct ScheduleNotchSection: View {
         presetPick = outcome.presetPick
         onClose()
         if outcome.consumesSuggestion { onConsumeSuggestion() }
+    }
+
+    /// Writes an outcome without closing (the panel is switching to Location instead).
+    private func write(_ outcome: ScheduleDraft.Outcome) {
+        selectedDate = outcome.date
+        presetPick = outcome.presetPick
+        if outcome.consumesSuggestion { onConsumeSuggestion() }
+    }
+
+    /// The panel is about to switch to Location: keep an edit (Set it), never lose it silently;
+    /// an invalid typed date / time beeps and blocks the switch.
+    private func commitForSwitch() -> Bool {
+        if focus == .time, !applyTypedTime(beepOnInvalid: true) {
+            AccessibilityNotification.Announcement("Not a time").post()
+            return false
+        }
+        switch model.prepareSwitch() {
+        case .saveAsIs:
+            return true
+        case .commitThenSave(let outcome):
+            write(outcome)
+            return true
+        case .invalid:
+            NSSound.beep()
+            AccessibilityNotification.Announcement("Not a date").post()
+            return false
+        }
     }
 }
