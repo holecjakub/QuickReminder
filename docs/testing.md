@@ -81,8 +81,12 @@ letter lands in the title, which stays empty so nothing can be saved; the
 routing itself is unit-tested in `TextRowSubmitTests`),
 `schedule_notch_click_cancels` (a click inside the section keeps it; a click
 on the title row cancels, no date chip), `schedule_notch_time_return` (↩ in
-the time field applies the time and keeps the section open; ⌘↩ then Sets) —
-the four In-notch scenarios SKIP with `--picker-style popover` —, and (only with `--with-save`) `save_choreography`.
+the time field applies the time and keeps the section open; ⌘↩ then Sets),
+`schedule_notch_pill_toggles` (the calendar button opens Set Date below the
+bar, which stays with its ✓, and a second click closes it without a date) —
+the five In-notch scenarios SKIP with `--picker-style popover`; the section is
+appended below the plain panel, so `schedule_notch_expand` also checks that
+the ✓ is still there —, and (only with `--with-save`) `save_choreography`.
 
 **Pinned clock:** `QR_NOW=2026-10-23T10:00` (local time, or any ISO 8601
 timestamp) shifts the app's clock, read once at launch like `QR_TEXT_SCALE`;

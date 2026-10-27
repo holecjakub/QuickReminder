@@ -4,6 +4,9 @@ All notable changes to QuickReminder. Format: [Keep a Changelog](https://keepach
 
 ## Unreleased
 
+- **Set Date in the notch keeps the panel as it is.** Opening it (calendar button, `⌘D`, the date chip) no longer redraws the panel: the header, title, notes and the bottom bar with ✓ stay where they are, and the panel only grows downward with Set Date added below the bottom bar. The calendar button closes it again. ✓ while it is open saves the reminder with the date you edited there (an untouched Set Date leaves the date as it was; a typed entry that is not a date beeps and nothing is saved). ⌘↩ sets the date while it is open. On short screens only the Set Date part scrolls.
+- Dev: `NotchLayout` appends the section to the full plain content (`scheduleContentHeight = contentHeight + section + 20`; `.controls` 519 pt, `.calendar` 751 pt at 100 % with a 39 pt band); the click-to-cancel band is the header, title and notes (`scheduleCancelBandBottom`); `ScheduleDraft.prepareSave` decides ✓; E2E scenarios updated for the new layout (`schedule_notch_pill_toggles` added).
+
 ## 0.5.2
 
 - In notch style, the calendar button in the bottom bar opens Set Date in the notch directly; it used to open the old native preset menu first (Custom… led to the notch). The popover style keeps the menu.

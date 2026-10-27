@@ -545,6 +545,8 @@ schedule_notch_expand() {
     [[ "$grown" -ge $(( before + gain )) ]] || { fail "expected ⌘D to grow the blob (dark=$grown, before=$before)"; return 1; }
     [[ "$grown_cal" -lt $(( before_cal + gain )) ]] || { fail "the blob grew to calendar height without ⌘K (dark=$grown_cal)"; return 1; }
     assert_open "schedule_notch_expand_controls_open" || return 1
+    # The plain panel stays as it is: the bottom bar with ✓ is still there above the section.
+    assert_save_button_present "$SHOT_DIR/schedule_notch_expand_controls_open.png" || return 1
     press_cmd k
     sleep 0.8
     png=$(shot "schedule_notch_expand_calendar" "$region")
@@ -659,7 +661,7 @@ schedule_notch_return_sets() {
 }
 
 # In-notch: a click inside the section keeps it; a click on the title row (inside the panel,
-# above the section) cancels scheduling — no date written — and the panel stays open.
+# above the bottom bar) cancels scheduling — no date written — and the panel stays open.
 schedule_notch_click_cancels() {
     if [[ "${PICKER_STYLE:-notch}" == "popover" ]]; then
         echo "SKIP:picker style is popover"
@@ -675,8 +677,8 @@ schedule_notch_click_cancels() {
     sleep 0.3
     press_cmd d
     sleep 0.8
-    # Between the preview line and the presets (no control there), centred: inside the section.
-    click_at "$NOTCH_X" "$(( NOTCH_H + 160 ))"
+    # The section's type field (first row below the bottom bar; a click just focuses it), centred.
+    click_at "$NOTCH_X" "$(( NOTCH_H + 205 ))"
     sleep 0.6
     png=$(shot "schedule_notch_click_inside" "$region")
     local band; band=$(schedule_band_dark "$png" 300)
@@ -735,6 +737,44 @@ schedule_notch_time_return() {
     assert_closed "schedule_notch_time_closed" || return 1
 }
 
+# In-notch: the calendar button in the bottom bar toggles Set Date below the bar — the bar (and ✓)
+# stays visible while it is open, a second click closes it without writing a date.
+schedule_notch_pill_toggles() {
+    if [[ "${PICKER_STYLE:-notch}" == "popover" ]]; then
+        echo "SKIP:picker style is popover"
+        return 2
+    fi
+    local region="$(( PANEL_LEFT - 50 )),0,$(( PANEL_W + 100 )),$SCHEDULE_REGION_H"
+    local gain=$(( 500 * 80 * 4 * 2 / 5 ))
+    hotkey_toggle
+    sleep 0.8
+    assert_open "schedule_notch_pill_open" || return 1
+    local png; png=$(shot "schedule_notch_pill_before" "$region")
+    local before; before=$(schedule_band_dark "$png" 300)
+    # Calendar icon, same spot as date_menu_preset uses in the popover style.
+    click_at "$(( PANEL_LEFT + 69 ))" 197
+    sleep 0.8
+    png=$(shot "schedule_notch_pill_opened" "$region")
+    local band; band=$(schedule_band_dark "$png" 300)
+    log_step "after the calendar button: band=$band"
+    [[ "$band" -ge $(( before + gain )) ]] || { fail "expected the calendar button to open Set Date below the bar (dark=$band)"; return 1; }
+    png=$(shot "schedule_notch_pill_bar")
+    assert_save_button_present "$png" || return 1
+    click_at "$(( PANEL_LEFT + 69 ))" 197
+    sleep 0.9
+    png=$(shot "schedule_notch_pill_closed_again" "$region")
+    band=$(schedule_band_dark "$png" 300)
+    log_step "after the second click: band=$band"
+    [[ "$band" -lt $(( before + gain / 4 )) ]] || { fail "expected a second click to close Set Date (dark=$band)"; return 1; }
+    assert_open "schedule_notch_pill_still_open" || return 1
+    png=$(shot "schedule_notch_pill_no_chip")
+    local chip; chip=$(saturated_count "$png" 20 130 260 40)
+    [[ "$chip" -lt 200 ]] || { fail "closing with the calendar button wrote a date (saturated=$chip)"; return 1; }
+    press_escape
+    sleep 0.6
+    assert_closed "schedule_notch_pill_closed" || return 1
+}
+
 # ---------------------------------------------------------------- runner
 
 ALL_SCENARIOS=(
@@ -755,6 +795,7 @@ ALL_SCENARIOS=(
     schedule_notch_return_sets
     schedule_notch_click_cancels
     schedule_notch_time_return
+    schedule_notch_pill_toggles
 )
 if [[ "$WITH_SAVE" -eq 1 ]]; then
     ALL_SCENARIOS+=(save_choreography)

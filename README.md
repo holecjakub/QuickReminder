@@ -38,7 +38,7 @@ Scripts/test.sh    # same, with a one-line pass/fail summary; passes extra args 
 | `Esc`, click outside, hotkey again, ⓧ | Collapses without saving |
 | “Reminders ▾” | Pick the target list (persists) |
 | Calendar icon | In notch (default): opens Set Date in the notch. Popover style: presets menu (in 1 hour, this evening, tomorrow, weekend, next week) or Custom… |
-| `⌘D`, Custom…, the date chip | Set Date: type a date (“zítra 14:00”, “fri 2pm”, “+2h”), pick a preset (`⌘1`…`⌘6`), or set day and time (`⌘K` calendar). By default the black notch panel grows to show it; Settings → Date picker style → Popover shows it in a popover instead |
+| `⌘D`, the calendar icon (In notch) or Custom… (Popover), the date chip | Set Date: type a date (“zítra 14:00”, “fri 2pm”, “+2h”), pick a preset (`⌘1`…`⌘6`), or set day and time (`⌘K` calendar). By default the black notch panel grows downward and shows it below the bottom bar (the calendar button toggles it; ✓ saves, applying the date you edited); Settings → Date picker style → Popover shows it in a popover instead |
 | Location icon | Add a location note (appended to Notes as 📍 …) |
 | Flag icon | Toggle flagged (orange) — stored as High priority, EventKit exposes no flag |
 | `open quickreminder://show` (`hide`, `toggle`) | Same actions from Shortcuts, Raycast, scripts |
