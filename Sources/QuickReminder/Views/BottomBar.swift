@@ -14,6 +14,11 @@ struct BottomBar: View {
     @Binding var showSchedulePopover: Bool
     /// Custom…: opens Set Date in the current style (popover, or the notch grows).
     let onOpenSetDate: () -> Void
+    /// The calendar button in notch style: opens Set Date below the bar, or closes it again.
+    let onToggleSetDate: () -> Void
+    /// The in-notch Set Date section is open: the calendar button shows as active, and ⌘↩ belongs
+    /// to Set (the ✓ keeps its click).
+    let setDateOpen: Bool
     /// Which preset wrote the date (menu presets and the popover record it).
     @Binding var presetPick: PresetPick?
     /// The title's live, undismissed date phrase: prefilled into the Set Date popover.
@@ -100,7 +105,7 @@ struct BottomBar: View {
         Button {
             // In notch: the button grows the panel straight into Set Date (its presets replace the
             // menu's); the native preset menu stays the popover style's entry point.
-            if pickerStyle == .notch { onOpenSetDate(); return }
+            if pickerStyle == .notch { onToggleSetDate(); return }
             let now = AppClock.now
             let presets: [PopUpMenu.Item] = [DatePreset.inOneHour, .evening, .tomorrow, .weekend, .nextWeek].map { preset in
                 let date = DatePreset.date(for: preset, now: now)
@@ -126,10 +131,12 @@ struct BottomBar: View {
                 .action("Custom…", systemImage: "calendar.badge.clock", keyEquivalentHint: "d") { onOpenSetDate() },
             ], belowPanelAt: NSEvent.mouseLocation.x - 12)
         } label: {
-            icon("calendar.badge.clock", active: dueDate != nil)
+            icon("calendar.badge.clock", active: dueDate != nil || setDateOpen)
         }
         .buttonStyle(HoverHighlightButtonStyle())
         .accessibilityLabel("Set date and time")
+        .accessibilityValue(setDateOpen ? "Set Date shown" : "")
+        .accessibilityHint(pickerStyle == .notch ? (setDateOpen ? "Hides Set Date" : "Shows Set Date below") : "")
         .popover(isPresented: $showSchedulePopover, arrowEdge: .bottom) {
             SchedulePopover(
                 selectedDate: $dueDate,
@@ -197,7 +204,7 @@ struct BottomBar: View {
                 .disabled(!canSave)
                 .animation(.easeInOut(duration: 0.18), value: canSave)
                 .accessibilityLabel("Save reminder")
-                .keyboardShortcut(.return, modifiers: .command)
+                .keyboardShortcut(setDateOpen ? nil : KeyboardShortcut(.return, modifiers: .command))
             }
         }
     }

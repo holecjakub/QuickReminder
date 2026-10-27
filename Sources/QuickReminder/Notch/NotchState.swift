@@ -94,7 +94,8 @@ enum NotchLayout {
 
     /// Open panel size with the in-notch Set Date section at `schedule` (`.none` = the plain panel),
     /// never taller than `maxHeight` (see `maxPanelHeight`) and never shorter than the plain
-    /// panel. When clamped, the section's rows scroll between the fixed title and footer.
+    /// panel. The plain panel is a fixed top part either way; when clamped, only the section's rows
+    /// scroll (between the bottom bar above and the section's own pinned footer).
     @MainActor static func openSize(notchBandHeight: CGFloat, schedule: ScheduleExpansion,
                                     maxHeight: CGFloat = .infinity) -> CGSize {
         let plain = openSize(notchBandHeight: notchBandHeight)
@@ -113,16 +114,25 @@ enum NotchLayout {
         screenFrame.maxY - visibleFrame.minY - scheduleScreenMargin
     }
 
-    /// Where the in-notch Set Date section starts, from the top of the panel (hosting view, top-down).
+    /// Where the in-notch Set Date section starts, from the top of the panel (hosting view,
+    /// top-down): right below the plain panel, whose content (header … bottom bar + its 20 pt inset)
+    /// stays exactly where it is.
     @MainActor static func scheduleSectionTop(notchBandHeight: CGFloat, textScale s: CGFloat) -> CGFloat {
+        notchBandHeight + contentHeight(textScale: s)
+    }
+
+    /// The bottom of the band whose clicks cancel scheduling: the header, title and notes. The chip
+    /// slot and the bottom bar below it keep their own meaning while the section is open (the
+    /// calendar button toggles the section, the date chip is a no-op, ✓ saves, see SPEC), and the
+    /// section itself is below them.
+    @MainActor static func scheduleCancelBandBottom(notchBandHeight: CGFloat, textScale s: CGFloat) -> CGFloat {
         notchBandHeight + topContentHeight(textScale: s)
     }
 
-    /// A click inside the open panel above the section (header, title, notes) cancels scheduling,
-    /// like a click outside the popover; the click still reaches what it landed on. The section's
-    /// full width counts as inside, so a near miss beside a control does not cancel.
-    static func clickCancelsSchedule(atY y: CGFloat, sectionTop: CGFloat, schedule: ScheduleExpansion) -> Bool {
-        schedule != .none && y < sectionTop
+    /// A click on the header / title / notes while the section is open cancels scheduling, like a
+    /// click outside the popover; the click still reaches what it landed on.
+    static func clickCancelsSchedule(atY y: CGFloat, bandBottom: CGFloat, schedule: ScheduleExpansion) -> Bool {
+        schedule != .none && y < bandBottom
     }
 
     /// Vertical rhythm of the open content below the notch band (SPEC §4) at text scale `s`.
@@ -145,17 +155,19 @@ enum NotchLayout {
         return 8 + header + 10 + input
     }
 
-    /// In-notch Set Date: header + title stay, the chip slot and bottom bar give way to the
-    /// scheduling section (`ScheduleNotchSection`, which lays itself out from these same metrics;
-    /// `NotchStateTests.scheduleHeightFollowsTheRhythm` pins the sum).
+    /// In-notch Set Date: the whole plain panel stays as it is (`contentHeight`, ending 20 pt below
+    /// the bottom bar) and the section is appended below it, ending `Theme.horizontalPadding` above
+    /// the grown body edge. `ScheduleNotchSection` lays itself out from the same metrics;
+    /// `NotchStateTests.scheduleHeightFollowsTheRhythm` pins the sum.
     @MainActor static func scheduleContentHeight(textScale s: CGFloat, calendar: Bool) -> CGFloat {
-        topContentHeight(textScale: s) + ScheduleMetrics.sectionHeight(textScale: s, calendar: calendar) + Theme.horizontalPadding
+        contentHeight(textScale: s) + ScheduleMetrics.sectionHeight(textScale: s, calendar: calendar) + Theme.horizontalPadding
     }
 
     /// Vertical metrics of the in-notch Set Date section, at 100 % text size (scaled like `Theme.s`).
     /// Gaps are fixed points, control heights scale.
     enum ScheduleMetrics {
-        static let topGap: CGFloat = 14          // input → type field
+        // The type field starts right at the section top: the plain panel's 20 pt inset below the
+        // bottom bar is the gap above it.
         static let typeField: CGFloat = 36
         static let previewGap: CGFloat = 6
         static let preview: CGFloat = 18
@@ -181,7 +193,7 @@ enum NotchLayout {
 
         @MainActor static func sectionHeight(textScale s: CGFloat, calendar: Bool) -> CGFloat {
             func sc(_ v: CGFloat) -> CGFloat { (v * s).rounded(.toNearestOrEven) }
-            var height = topGap + sc(typeField) + previewGap + sc(preview)
+            var height = sc(typeField) + previewGap + sc(preview)
                 + presetsGap + 2 * sc(presetRow) + presetSpacing
                 + dayTimeGap + sc(dayTimeRow)
             if calendar { height += calendarGap + calendarHeight(textScale: s) }

@@ -8,8 +8,9 @@ import SwiftUI
 /// on ⌘K, Clear · Cancel · Set), restyled for pure black: white/grey text, white-alpha fills
 /// instead of glass, the list's accent for selection and Set (its label colour picked for
 /// contrast, `AccentContrast`), corners concentric with the panel (`ScheduleMetrics.controlRadius`).
-/// The panel grows to fit (`NotchLayout.scheduleContentHeight`, clamped to the screen); every row's
-/// height comes from `NotchLayout.ScheduleMetrics`.
+/// Appended below the plain panel's bottom bar, which stays exactly as it is: the blob only grows
+/// downward (`NotchLayout.scheduleContentHeight`, clamped to the screen, only these rows scroll);
+/// every row's height comes from `NotchLayout.ScheduleMetrics`.
 ///
 /// Shown while `NotchState.schedule != .none` (the one source of truth); `onClose` asks the panel
 /// to settle back. Nothing reaches `selectedDate` until Set / ↩ / a preset / Clear.
@@ -25,6 +26,9 @@ struct ScheduleNotchSection: View {
     let onToggleCalendar: () -> Void
     /// Cancel or any commit: the panel settles back to its plain height.
     let onClose: () -> Void
+    /// ✓ in the bottom bar while the section is open, once the section has decided
+    /// (`ScheduleDraft.prepareSave`): save the reminder.
+    let onSaveReminder: () -> Void
 
     private enum Field: Hashable { case text, time, calendar }
     private typealias M = NotchLayout.ScheduleMetrics
@@ -49,7 +53,8 @@ struct ScheduleNotchSection: View {
     /// - Parameter initialText: the title's live, undismissed date phrase, prefilled into the field.
     init(selectedDate: Binding<Date?>, presetPick: Binding<PresetPick?>, accent: Color, initialText: String?,
          onConsumeSuggestion: @escaping () -> Void, showsCalendar: Bool,
-         onToggleCalendar: @escaping () -> Void, onClose: @escaping () -> Void) {
+         onToggleCalendar: @escaping () -> Void, onClose: @escaping () -> Void,
+         onSaveReminder: @escaping () -> Void) {
         _selectedDate = selectedDate
         _presetPick = presetPick
         self.accent = accent
@@ -57,6 +62,7 @@ struct ScheduleNotchSection: View {
         self.showsCalendar = showsCalendar
         self.onToggleCalendar = onToggleCalendar
         self.onClose = onClose
+        self.onSaveReminder = onSaveReminder
         let model = ScheduleDraft(selected: selectedDate.wrappedValue, initialText: initialText)
         _model = State(initialValue: model)
         _calendarMonth = State(initialValue: MonthGrid.startOfMonth(model.draft))
@@ -94,6 +100,7 @@ struct ScheduleNotchSection: View {
         .background(commandReturnTwin)
         .background(calendarShortcut)
         .onReceive(NotificationCenter.default.publisher(for: .scheduleCommitRequested)) { _ in commit() }
+        .onReceive(NotificationCenter.default.publisher(for: .scheduleSaveRequested)) { _ in saveFromBar() }
         .onChange(of: model.text) { _, _ in model.announceAfterPause { previewSpoken() } }
         .onChange(of: model.draft) { _, newDraft in
             if focus != .time { syncTimeText() }
@@ -118,7 +125,6 @@ struct ScheduleNotchSection: View {
     private var rows: some View {
         VStack(alignment: .leading, spacing: 0) {
             typeField
-                .padding(.top, M.topGap)
                 .staggered(0, appeared: appeared, reduceMotion: reduceMotion)
             previewLine
                 .padding(.top, M.previewGap)
@@ -451,6 +457,21 @@ struct ScheduleNotchSection: View {
             return
         }
         finish(outcome)
+    }
+
+    /// ✓ while the section is open: see `ScheduleDraft.SaveDecision`.
+    private func saveFromBar() {
+        if focus == .time { applyTypedTime(beepOnInvalid: false) }
+        switch model.prepareSave() {
+        case .saveAsIs:
+            onClose()
+            onSaveReminder()
+        case .commitThenSave(let outcome):
+            finish(outcome)
+            onSaveReminder()
+        case .invalid:
+            NSSound.beep()
+        }
     }
 
     private func finish(_ outcome: ScheduleDraft.Outcome?) {

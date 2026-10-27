@@ -518,10 +518,10 @@ final class PanelController {
                 // In-notch Set Date: a click on the header / title / notes cancels scheduling (like a
                 // click outside the popover) and still lands where it was aimed.
                 let topDown = hosting.isFlipped ? point.y : hosting.bounds.maxY - point.y
-                let sectionTop = NotchLayout.scheduleSectionTop(notchBandHeight: self.state.notchBandHeight,
-                                                                textScale: NotchLayout.cachedTextScale)
+                let bandBottom = NotchLayout.scheduleCancelBandBottom(notchBandHeight: self.state.notchBandHeight,
+                                                                      textScale: NotchLayout.cachedTextScale)
                 if event.type == .leftMouseDown,
-                   NotchLayout.clickCancelsSchedule(atY: topDown, sectionTop: sectionTop, schedule: self.state.schedule) {
+                   NotchLayout.clickCancelsSchedule(atY: topDown, bandBottom: bandBottom, schedule: self.state.schedule) {
                     NotificationCenter.default.post(name: .panelCancelSchedule, object: nil)
                 }
             }
@@ -569,4 +569,6 @@ extension Notification.Name {
     static let panelCancelSchedule = Notification.Name("PanelCancelSchedule")
     /// ↩ / ⌘↩ in the title or notes while the in-notch section is open: Set, not save.
     static let scheduleCommitRequested = Notification.Name("ScheduleCommitRequested")
+    /// ✓ while the in-notch section is open: it decides (Set first or not), then the reminder saves.
+    static let scheduleSaveRequested = Notification.Name("ScheduleSaveRequested")
 }

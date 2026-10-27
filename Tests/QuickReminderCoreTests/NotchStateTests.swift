@@ -103,26 +103,37 @@ struct NotchStateTests {
         #expect(st.currentSize == st.closedSize, "closed ignores a stale schedule")
     }
 
-    /// The schedule section keeps header + title/notes and replaces the chip slot + bottom bar;
-    /// its sum must match `ScheduleNotchSection`'s rows exactly (an undersized blob would clip
-    /// the footer, an oversized one would float it).
+    /// The whole plain panel (header … bottom bar + its 20 pt inset) stays as it is and the section
+    /// is appended below it; the sum must match `ScheduleNotchSection`'s rows exactly (an
+    /// undersized blob would clip the footer, an oversized one would float it).
     @Test func scheduleHeightFollowsTheRhythm() {
         for scale in [0.85, 1.0, 1.3, 1.6] as [CGFloat] {
             func sc(_ v: CGFloat) -> CGFloat { (v * scale).rounded(.toNearestOrEven) }
             let input = PlainTextView.lineHeight(for: sc(19)) + 2 + 1 + PlainTextView.lineHeight(for: sc(15)) + 2
             let top = 8 + sc(36) + 10 + input
-            let controls = 14 + sc(36) + 6 + sc(18) + 10 + 2 * sc(44) + 8 + 12 + sc(30) + 14 + sc(36)
+            let plain = top + sc(26) + 8 + sc(48) + Theme.horizontalPadding
+            let controls = sc(36) + 6 + sc(18) + 10 + 2 * sc(44) + 8 + 12 + sc(30) + 14 + sc(36)
             let calendar = 10 + sc(26) + sc(18) + 6 * sc(28) + 5 * 2
             #expect(NotchLayout.topContentHeight(textScale: scale) == top, "top at \(scale)")
-            #expect(NotchLayout.scheduleContentHeight(textScale: scale, calendar: false) == top + controls + Theme.horizontalPadding,
+            #expect(NotchLayout.contentHeight(textScale: scale) == plain, "plain panel at \(scale)")
+            #expect(NotchLayout.scheduleContentHeight(textScale: scale, calendar: false) == plain + controls + Theme.horizontalPadding,
                     "controls at \(scale)")
-            #expect(NotchLayout.scheduleContentHeight(textScale: scale, calendar: true) == top + controls + calendar + Theme.horizontalPadding,
+            #expect(NotchLayout.scheduleContentHeight(textScale: scale, calendar: true) == plain + controls + calendar + Theme.horizontalPadding,
                     "calendar at \(scale)")
-            #expect(NotchLayout.contentHeight(textScale: scale) == top + sc(26) + 8 + sc(48) + Theme.horizontalPadding,
-                    "the plain panel shares the same top")
         }
-        #expect(NotchLayout.scheduleContentHeight(textScale: 1, calendar: false) == 392, "100 + 272 + 20")
-        #expect(NotchLayout.scheduleContentHeight(textScale: 1, calendar: true) == 624, "392 + 10 + 26 + 18 + 168 + 10")
+        #expect(NotchLayout.scheduleContentHeight(textScale: 1, calendar: false) == 480, "202 plain + 258 section + 20")
+        #expect(NotchLayout.scheduleContentHeight(textScale: 1, calendar: true) == 712, "480 + 10 + 26 + 18 + 168 + 10")
+    }
+
+    /// The plain panel is the fixed top of every grown state: the section starts where the plain
+    /// panel ends, so nothing above it moves when the blob grows.
+    @Test func theSectionIsAppendedBelowThePlainPanel() {
+        for band in [33, 39] as [CGFloat] {
+            let plain = NotchLayout.openSize(notchBandHeight: band)
+            #expect(NotchLayout.scheduleSectionTop(notchBandHeight: band, textScale: NotchLayout.textScale) == plain.height,
+                    "section top = plain panel bottom (band \(band))")
+        }
+        #expect(abs(NotchLayout.scheduleSectionTop(notchBandHeight: 39, textScale: 1) - (39 + 202)) < 0.01)
     }
 
     @Test func scheduleSizesGrowOnlyInHeight() {
@@ -173,12 +184,18 @@ struct NotchStateTests {
                 == 1080 - NotchLayout.scheduleScreenMargin)
     }
 
-    @Test func clickAboveTheSectionCancelsScheduling() {
-        let top = NotchLayout.scheduleSectionTop(notchBandHeight: 39, textScale: 1)
-        #expect(top == 39 + NotchLayout.topContentHeight(textScale: 1))
-        #expect(NotchLayout.clickCancelsSchedule(atY: top - 30, sectionTop: top, schedule: .controls), "title row")
-        #expect(NotchLayout.clickCancelsSchedule(atY: 60, sectionTop: top, schedule: .calendar), "header")
-        #expect(!NotchLayout.clickCancelsSchedule(atY: top + 1, sectionTop: top, schedule: .controls), "inside the section")
-        #expect(!NotchLayout.clickCancelsSchedule(atY: top - 30, sectionTop: top, schedule: .none), "nothing to cancel")
+    /// Header, title and notes cancel; the chip slot and the bottom bar below them keep their own
+    /// meaning (calendar button toggles, date chip no-op, ✓ saves), and the section does not cancel.
+    @Test func clickOnTheTextRowsCancelsScheduling() {
+        let bandBottom = NotchLayout.scheduleCancelBandBottom(notchBandHeight: 39, textScale: 1)
+        let sectionTop = NotchLayout.scheduleSectionTop(notchBandHeight: 39, textScale: 1)
+        #expect(abs(bandBottom - (39 + 100)) < 0.01, "header + title + notes")
+        #expect(NotchLayout.clickCancelsSchedule(atY: bandBottom - 30, bandBottom: bandBottom, schedule: .controls), "title row")
+        #expect(NotchLayout.clickCancelsSchedule(atY: 60, bandBottom: bandBottom, schedule: .calendar), "header")
+        let barCentre = bandBottom + 26 + 8 + 24
+        #expect(!NotchLayout.clickCancelsSchedule(atY: bandBottom + 10, bandBottom: bandBottom, schedule: .controls), "date chip slot")
+        #expect(!NotchLayout.clickCancelsSchedule(atY: barCentre, bandBottom: bandBottom, schedule: .controls), "bottom bar")
+        #expect(!NotchLayout.clickCancelsSchedule(atY: sectionTop + 1, bandBottom: bandBottom, schedule: .controls), "inside the section")
+        #expect(!NotchLayout.clickCancelsSchedule(atY: bandBottom - 30, bandBottom: bandBottom, schedule: .none), "nothing to cancel")
     }
 }

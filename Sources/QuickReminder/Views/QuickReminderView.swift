@@ -66,6 +66,10 @@ struct QuickReminderView: View {
             )
             .padding(.top, 10)
 
+            // The plain panel never changes for Set Date: chip slot and bottom bar stay put.
+            regularBottom
+
+            // In notch: Set Date is appended below the bottom bar; the blob grows downward only.
             if schedulingInNotch {
                 ScheduleNotchSection(
                     selectedDate: $dueDate,
@@ -77,19 +81,17 @@ struct QuickReminderView: View {
                     onToggleCalendar: {
                         PanelController.shared.setSchedule(notch.schedule == .calendar ? .controls : .calendar)
                     },
-                    onClose: { PanelController.shared.setSchedule(.none) }
+                    onClose: { PanelController.shared.setSchedule(.none) },
+                    onSaveReminder: { saveReminder(afterSetDate: true) }
                 )
-                // Takes the rest of the panel; its rows scroll when the screen clamps the height.
+                // Takes the rest of the grown panel; only its rows scroll when the screen clamps the
+                // height (everything above is the fixed plain panel).
                 .frame(maxHeight: .infinity, alignment: .top)
                 .padding(.bottom, Theme.horizontalPadding)
-                // The section's rows stagger in themselves; leaving, it fades quicker than it came.
+                // The section's rows stagger in themselves; leaving, it fades quicker than it came
+                // while the blob retracts over it.
                 .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.12)),
                                         removal: .opacity.animation(.easeOut(duration: 0.1))))
-            } else {
-                regularBottom
-                    .transition(.asymmetric(
-                        insertion: .opacity.animation(.easeOut(duration: 0.18).delay(0.12)),
-                        removal: .opacity.animation(.easeOut(duration: 0.08))))
             }
         }
         .padding(.horizontal, Theme.horizontalPadding + NotchLayout.openTopRadius)
@@ -132,7 +134,8 @@ struct QuickReminderView: View {
         .onChange(of: dueDate) { _, newValue in if newValue == nil { updateSuggestion(for: title) } }
     }
 
-    /// Date chip / suggestion / error slot and the bottom bar (the in-notch Set Date replaces both).
+    /// Date chip / suggestion / error slot and the bottom bar (always shown, also while the in-notch
+    /// Set Date section is open below them).
     private var regularBottom: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Fixed-height slot for the date chip / suggestion / error, so the bottom bar never
@@ -163,10 +166,12 @@ struct QuickReminderView: View {
                 flagged: $flagged,
                 locationText: $locationText,
                 canSave: canSave,
-                onSave: saveReminder,
+                onSave: { saveReminder() },
                 showLocationField: $showLocationField,
                 showSchedulePopover: $showSchedulePopover,
                 onOpenSetDate: openSetDate,
+                onToggleSetDate: toggleSetDate,
+                setDateOpen: schedulingInNotch,
                 presetPick: $presetPick,
                 suggestionText: suggestion?.matchedText,
                 onConsumeSuggestion: stripSuggestionPhrase,
@@ -313,11 +318,19 @@ struct QuickReminderView: View {
         }
     }
 
-    private func saveReminder() {
+    /// The calendar button in notch style: opens Set Date, or closes it (Cancel) when it is open.
+    private func toggleSetDate() {
+        PanelController.shared.setSchedule(schedulingInNotch ? .none : .controls)
+    }
+
+    /// ✓ (and ⌘↩ when Set Date is closed). While the in-notch section is open, ✓ asks it first
+    /// (`ScheduleDraft.prepareSave`): an edited draft is Set and then saved, an untouched one is
+    /// dropped and the reminder saved as it is, an invalid one beeps and nothing is saved. The
+    /// section calls back with `afterSetDate: true`.
+    private func saveReminder(afterSetDate: Bool = false) {
         guard !saveButtonYielded else { return }   // already saved; the ✓ is flying
-        // In-notch Set Date open: ↩ / ⌘↩ mean Set (commit the draft, close the section), never save.
-        guard !schedulingInNotch else {
-            NotificationCenter.default.post(name: .scheduleCommitRequested, object: nil)
+        guard afterSetDate || !schedulingInNotch else {
+            NotificationCenter.default.post(name: .scheduleSaveRequested, object: nil)
             return
         }
         // Like iOS Reminders: an un-dismissed date phrase is applied automatically on save.
