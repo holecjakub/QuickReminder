@@ -4,6 +4,8 @@ All notable changes to QuickReminder. Format: [Keep a Changelog](https://keepach
 
 ## Unreleased
 
+## 0.5.2
+
 - In notch style, the calendar button in the bottom bar opens Set Date in the notch directly; it used to open the old native preset menu first (Custom… led to the notch). The popover style keeps the menu.
 
 ## 0.5.1
