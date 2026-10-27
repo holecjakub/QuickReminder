@@ -120,7 +120,7 @@ struct ScheduleNotchSection: View {
                 .staggered(3, appeared: appeared, reduceMotion: reduceMotion)
         }
         .tint(accent)
-        .background(commandReturnTwin)
+        .background(CommandReturnTwin(action: commit))
         .background(calendarShortcut)
         .onReceive(NotificationCenter.default.publisher(for: .sectionCommitRequested)) { _ in commit() }
         .onReceive(NotificationCenter.default.publisher(for: .sectionSaveRequested)) { _ in saveFromBar() }
@@ -462,15 +462,6 @@ struct ScheduleNotchSection: View {
         .frame(height: Theme.s(M.footer))
     }
 
-    /// ⌘↩ is Set too (the bottom bar's ✓ gives up its ⌘↩ while the section is open).
-    private var commandReturnTwin: some View {
-        Button("", action: commit)
-            .keyboardShortcut(.return, modifiers: .command)
-            .opacity(0)
-            .frame(width: 0, height: 0)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-    }
 
     /// ⌘K toggles the month grid from anywhere in the section.
     private var calendarShortcut: some View {

@@ -194,7 +194,7 @@ struct NotchMachine: Hashable, Sendable {
 
         case .sectionChanged(let expansion):
             guard phase == .open, expansion != section else { return [] }
-            return changeSchedule(to: expansion)
+            return changeSection(to: expansion)
 
         case .hoverEntered:
             guard phase == .closed(parked: true), hoverArmed, !hoverSwollen, !hoverDwellPending else { return [] }
@@ -247,7 +247,7 @@ struct NotchMachine: Hashable, Sendable {
 
     // MARK: - Transitions shared by several events
 
-    private mutating func changeSchedule(to expansion: NotchSection) -> [NotchEffect] {
+    private mutating func changeSection(to expansion: NotchSection) -> [NotchEffect] {
         section = expansion
         generation &+= 1
         // The content mask goes back on while the blob springs: the section is laid out at its
@@ -260,7 +260,7 @@ struct NotchMachine: Hashable, Sendable {
         // Raycast / Spotlight reopen) while Set Date is open in the notch returns to the plain
         // panel, through the same transition as Cancel, so NotchState and the view follow.
         guard phase != .open else {
-            return section == .none ? [] : changeSchedule(to: .none)
+            return section == .none ? [] : changeSection(to: .none)
         }
         var effects: [NotchEffect] = []
         if hoverDwellPending {

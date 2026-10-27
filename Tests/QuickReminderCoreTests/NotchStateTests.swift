@@ -180,7 +180,7 @@ struct NotchStateTests {
         func cancels(_ y: CGFloat, _ section: NotchSection = .controls) -> Bool {
             NotchLayout.clickCancelsSection(atY: y, notchBandHeight: 39, textScale: 1, section: section)
         }
-        let bandBottom = NotchLayout.scheduleCancelBandBottom(notchBandHeight: 39, textScale: 1)
+        let bandBottom = NotchLayout.sectionCancelBandBottom(notchBandHeight: 39, textScale: 1)
         #expect(abs(bandBottom - (39 + 100)) < 0.01, "header + title + notes")
         #expect(cancels(60, .calendar), "header")
         #expect(cancels(105), "title row")
@@ -207,6 +207,24 @@ struct NotchStateTests {
         #expect(!NotchLayout.passesMouseThrough(CGPoint(x: centreX, y: 400), canvasWidth: canvasWidth, panelSize: grown),
                 "the same spot is the Set Date section once the blob has grown")
         #expect(NotchLayout.passesMouseThrough(CGPoint(x: centreX, y: 700), canvasWidth: canvasWidth, panelSize: grown))
+        // Body sides: the 600 pt shape rect sits at x 24 … 624 in the 648 pt canvas, and its straight
+        // sides are the open top radius (19 pt) further in (the concave top fillets), so x 43 … 605.
+        // Just inside vs just outside, mid-height, so a wrong bounding box (early-out) fails here.
+        let inset = 24 + NotchLayout.openTopRadius
+        #expect(!NotchLayout.passesMouseThrough(CGPoint(x: canvasWidth - inset - 2, y: 120), canvasWidth: canvasWidth, panelSize: plain), "just inside the right side")
+        #expect(NotchLayout.passesMouseThrough(CGPoint(x: canvasWidth - inset + 2, y: 120), canvasWidth: canvasWidth, panelSize: plain), "just outside the right side")
+        #expect(!NotchLayout.passesMouseThrough(CGPoint(x: inset + 2, y: 120), canvasWidth: canvasWidth, panelSize: plain), "just inside the left side")
+        #expect(NotchLayout.passesMouseThrough(CGPoint(x: inset - 2, y: 120), canvasWidth: canvasWidth, panelSize: plain), "just outside the left side")
+        #expect(NotchLayout.passesMouseThrough(CGPoint(x: centreX, y: 242), canvasWidth: canvasWidth, panelSize: plain), "just below the bottom edge")
+    }
+
+    /// Never drop the window mid-press; taking the mouse back is immediate.
+    @Test func ignoringTheMouseWaitsForTheButtonRelease() {
+        #expect(!NotchLayout.shouldIgnoreMouse(target: true, current: false, buttonsPressed: true), "holds false while pressed")
+        #expect(NotchLayout.shouldIgnoreMouse(target: true, current: false, buttonsPressed: false), "flips on release")
+        #expect(!NotchLayout.shouldIgnoreMouse(target: false, current: true, buttonsPressed: true), "back into the shape: immediate")
+        #expect(NotchLayout.shouldIgnoreMouse(target: true, current: true, buttonsPressed: true), "already ignoring stays")
+        #expect(!NotchLayout.shouldIgnoreMouse(target: false, current: false, buttonsPressed: false))
     }
 
     /// Global bottom-left mouse coordinates → top-down canvas points, also for a window whose

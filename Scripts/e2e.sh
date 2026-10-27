@@ -846,6 +846,7 @@ schedule_notch_location() {
     assert_open "schedule_notch_location_open" || return 1
     local png; png=$(shot "schedule_notch_location_before" "$region")
     local before; before=$(section_band_dark "$png" 250 40)
+    local deep0; deep0=$(schedule_band_dark "$png" 420)   # baseline, like schedule_notch_section_switch
     [[ "$before" -le $(( area - gain )) ]] || { echo "SKIP:the desktop below the panel is too dark"; return 2; }
     click_at "$(( PANEL_LEFT + LOCATION_X_OFFSET ))" 197
     sleep 0.8
@@ -854,7 +855,7 @@ schedule_notch_location() {
     local deep; deep=$(schedule_band_dark "$png" 420)
     log_step "after the location button: band=$band (before $before), deeper=$deep"
     [[ "$band" -ge $(( before + gain )) ]] || { fail "expected the location button to grow Location below the bar (dark=$band)"; return 1; }
-    [[ "$deep" -lt $(( 500 * 80 * 4 * 2 / 5 )) ]] || { fail "Location grew as tall as Set Date (dark=$deep)"; return 1; }
+    [[ "$deep" -lt $(( deep0 + 500 * 80 * 4 * 2 / 5 / 4 )) ]] || { fail "Location grew as tall as Set Date (dark=$deep, before $deep0)"; return 1; }
     png=$(shot "schedule_notch_location_bar")
     assert_save_button_present "$png" || return 1
     press_escape

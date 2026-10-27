@@ -98,8 +98,7 @@ struct QuickReminderView: View {
                 .padding(.bottom, Theme.horizontalPadding)
                 // The section's rows stagger in themselves; leaving, it fades quicker than it came
                 // while the blob retracts over it.
-                .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.12)),
-                                        removal: .opacity.animation(.easeOut(duration: 0.1))))
+                .notchSectionTransition()
             } else if locationInNotch {
                 LocationNotchSection(
                     locationText: $locationText,
@@ -110,8 +109,7 @@ struct QuickReminderView: View {
                 )
                 .frame(maxHeight: .infinity, alignment: .top)
                 .padding(.bottom, Theme.horizontalPadding)
-                .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.12)),
-                                        removal: .opacity.animation(.easeOut(duration: 0.1))))
+                .notchSectionTransition()
             }
         }
         .padding(.horizontal, Theme.horizontalPadding + NotchLayout.openTopRadius)
@@ -336,7 +334,7 @@ struct QuickReminderView: View {
         }
     }
 
-    /// ↩ in the title or notes: Set while the in-notch section is open, otherwise save.
+    /// ↩ in the title or notes: the open in-notch section's commit (Set / Done), otherwise save.
     private func submitFromTextRow() {
         switch ScheduleCommit.textRowSubmit(sectionOpen: sectionOpen, canSave: canSave) {
         case .commitSection: NotificationCenter.default.post(name: .sectionCommitRequested, object: nil)
@@ -364,10 +362,11 @@ struct QuickReminderView: View {
         if locationInNotch { PanelController.shared.setSection(.none) } else { switchSection(to: .location) }
     }
 
-    /// ✓ (and ⌘↩ when no section is open). Location: an edit is applied, then saved. While the in-notch section is open, ✓ asks it first
-    /// (`ScheduleDraft.prepareSave`): an edited draft is Set and then saved, an untouched one is
-    /// dropped and the reminder saved as it is, an invalid one beeps and nothing is saved. The
-    /// section calls back with `afterSection: true`.
+    /// ✓ (and ⌘↩ when no section is open). While an in-notch section is open, ✓ asks it first:
+    /// Set Date (`ScheduleDraft.prepareSave`) Sets an edited draft and then saves, saves an
+    /// untouched one as it is, and beeps without saving for an invalid one; Location
+    /// (`LocationDraft.saveDecision`) applies an edited field, then saves. The section calls back
+    /// with `afterSection: true`.
     private func saveReminder(afterSection: Bool = false) {
         guard !saveButtonYielded else { return }   // already saved; the ✓ is flying
         guard afterSection || !sectionOpen else {

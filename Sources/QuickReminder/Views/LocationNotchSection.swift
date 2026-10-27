@@ -47,7 +47,7 @@ struct LocationNotchSection: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .tint(accent)
-        .background(commandReturnTwin)
+        .background(CommandReturnTwin(action: done))
         .onReceive(NotificationCenter.default.publisher(for: .sectionCommitRequested)) { _ in done() }
         .onReceive(NotificationCenter.default.publisher(for: .sectionSaveRequested)) { _ in saveFromBar() }
         .onAppear {
@@ -126,15 +126,6 @@ struct LocationNotchSection: View {
         .frame(height: Theme.s(M.footer))
     }
 
-    /// ⌘↩ is Done too (the bottom bar's ✓ gives up its ⌘↩ while a section is open).
-    private var commandReturnTwin: some View {
-        Button("", action: done)
-            .keyboardShortcut(.return, modifiers: .command)
-            .opacity(0)
-            .frame(width: 0, height: 0)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-    }
 
     private func done() {
         locationText = draft.committed

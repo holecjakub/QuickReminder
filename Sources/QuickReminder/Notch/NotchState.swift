@@ -133,7 +133,7 @@ enum NotchLayout {
     /// slot and the bottom bar below it keep their own meaning while the section is open (the
     /// calendar button toggles the section, the date chip is a no-op, ✓ saves, see SPEC), and the
     /// section itself is below them.
-    @MainActor static func scheduleCancelBandBottom(notchBandHeight: CGFloat, textScale s: CGFloat) -> CGFloat {
+    @MainActor static func sectionCancelBandBottom(notchBandHeight: CGFloat, textScale s: CGFloat) -> CGFloat {
         notchBandHeight + topContentHeight(textScale: s)
     }
 
@@ -148,7 +148,7 @@ enum NotchLayout {
     /// (its ✓ must reach `prepareSave` with the edit intact) or the section.
     @MainActor static func clickCancelsSection(atY y: CGFloat, notchBandHeight: CGFloat, textScale s: CGFloat,
                                                 section: NotchSection) -> Bool {
-        clickCancelsSection(atY: y, bandBottom: scheduleCancelBandBottom(notchBandHeight: notchBandHeight, textScale: s),
+        clickCancelsSection(atY: y, bandBottom: sectionCancelBandBottom(notchBandHeight: notchBandHeight, textScale: s),
                              section: section)
     }
 
@@ -162,6 +162,15 @@ enum NotchLayout {
         guard bounds.contains(point) else { return true }
         return !NotchShape.contains(point, canvasWidth: canvasWidth, shapeSize: panelSize,
                                     topCornerRadius: openTopRadius, bottomCornerRadius: openBottomRadius)
+    }
+
+    /// The window's next `ignoresMouseEvents`, given what the pointer asks for (`target`, from
+    /// `passesMouseThrough`), what it is now, and whether a mouse button is down: never drop the
+    /// window mid-press (a drag that started on a control and left the shape) — it holds `false`
+    /// until the mouse-up re-evaluates. Taking the mouse back is always immediate.
+    static func shouldIgnoreMouse(target: Bool, current: Bool, buttonsPressed: Bool) -> Bool {
+        if target && !current && buttonsPressed { return current }
+        return target
     }
 
     /// The pointer (`NSEvent.mouseLocation`, global, bottom-left origin) as a top-down point in

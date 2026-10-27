@@ -98,3 +98,28 @@ extension View {
                        : .easeOut(duration: 0.24).delay(0.06 + Double(index) * 0.035), value: appeared)
     }
 }
+
+/// ⌘↩ for an in-notch section's commit (Set / Done): an invisible button that keeps the shortcut
+/// in SwiftUI's key-equivalent pass (`.hidden()` would drop it). The bottom bar's ✓ gives up its
+/// ⌘↩ while a section is open.
+struct CommandReturnTwin: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button("", action: action)
+            .keyboardShortcut(.return, modifiers: .command)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+extension View {
+    /// An in-notch section entering / leaving below the bottom bar: its rows stagger in themselves,
+    /// so the container only fades in quickly, and fades out quicker while the blob retracts.
+    func notchSectionTransition() -> some View {
+        transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.12)),
+                               removal: .opacity.animation(.easeOut(duration: 0.1))))
+    }
+}
