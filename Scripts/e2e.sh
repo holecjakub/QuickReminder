@@ -212,7 +212,14 @@ assert_save_button_present() {
         fail "save button region looks like wallpaper (n=$n)"
         return 1
     fi
-    log_step "save button present: n=$n"
+    # The ✓ itself, not just something dark (the black Set Date section would pass the check above):
+    # the white checkmark inside the circle. Wider box so a narrower panel (smaller text) still hits.
+    local tick; tick=$(bright_count "$png" 500 165 90 65 200)
+    if [[ "$tick" -lt 60 ]]; then
+        fail "no white checkmark in the save button region (bright=$tick)"
+        return 1
+    fi
+    log_step "save button present: n=$n tick=$tick"
 }
 
 # ---------------------------------------------------------------- scenarios
@@ -505,7 +512,7 @@ schedule_popover_esc() {
 # Esc settles it back to the normal open height (panel stays open), a second Esc closes.
 # Growth is measured as the gain in dark pixels in bands across the panel's inner 500 pt (inside
 # the panel at any text size) below its normal bottom edge, relative to the plain open panel.
-SCHEDULE_REGION_H=720
+SCHEDULE_REGION_H=800   # the calendar blob + overshoot is ~775 pt at 100 %
 schedule_band_dark() {
     # schedule_band_dark <png> <y> -- dark px in a 500 x 80 pt band centred in the capture.
     dark_count "$1" $(( (PANEL_W + 100) / 2 - 250 )) "$2" 500 80 20
@@ -517,8 +524,8 @@ schedule_notch_expand() {
         return 2
     fi
     local region="$(( PANEL_LEFT - 50 )),0,$(( PANEL_W + 100 )),$SCHEDULE_REGION_H"
-    # Bands (points from the top): y 300 lies below the ~240 pt panel and inside the ~430 pt
-    # schedule blob; y 540 only inside the ~660 pt calendar blob.
+    # Bands (points from the top): y 300 lies below the ~240 pt plain panel and inside the ~520 pt
+    # schedule blob; y 540 only inside the ~750 pt calendar blob (Set Date sits below the bar).
     local area=$(( 500 * 80 * 4 ))   # at 2x
     local gain=$(( area * 2 / 5 ))   # the blob must darken at least 40 % of the band
     hotkey_toggle
