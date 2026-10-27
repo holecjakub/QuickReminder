@@ -141,8 +141,18 @@ enum NotchLayout {
     /// shape (`panelSize`, open radii; top-down hosting-view point), so the transparent part of the
     /// tall canvas never swallows a click, scroll or hover meant for the app below.
     static func passesMouseThrough(_ point: CGPoint, canvasWidth: CGFloat, panelSize: CGSize) -> Bool {
-        !NotchShape.contains(point, canvasWidth: canvasWidth, shapeSize: panelSize,
-                             topCornerRadius: openTopRadius, bottomCornerRadius: openBottomRadius)
+        // Called for every pointer move system-wide while open: the bounding box answers most of
+        // them without building the silhouette path.
+        let bounds = CGRect(x: (canvasWidth - panelSize.width) / 2, y: 0, width: panelSize.width, height: panelSize.height)
+        guard bounds.contains(point) else { return true }
+        return !NotchShape.contains(point, canvasWidth: canvasWidth, shapeSize: panelSize,
+                                    topCornerRadius: openTopRadius, bottomCornerRadius: openBottomRadius)
+    }
+
+    /// The pointer (`NSEvent.mouseLocation`, global, bottom-left origin) as a top-down point in
+    /// the canvas of a window at `windowFrame` (the hosting view fills the window).
+    static func canvasPoint(mouse: CGPoint, windowFrame: CGRect) -> CGPoint {
+        CGPoint(x: mouse.x - windowFrame.minX, y: windowFrame.maxY - mouse.y)
     }
 
     /// Vertical rhythm of the open content below the notch band (SPEC §4) at text scale `s`.

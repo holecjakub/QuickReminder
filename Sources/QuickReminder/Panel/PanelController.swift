@@ -48,6 +48,13 @@ final class PanelController {
         ) { [weak self] _ in
             Task { @MainActor in self?.relayout() }
         }
+        // Pointer monitors see nothing while a menu tracks (PopUpMenu / NSMenu) or a popover is up;
+        // re-check the pass-through when they end, before the next unmoved click.
+        for name in [NSMenu.didEndTrackingNotification, NSPopover.didCloseNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.updatePointerPassThrough() }
+            }
+        }
     }
 
     // MARK: - Public
@@ -146,6 +153,8 @@ final class PanelController {
             var noAnim = Transaction(); noAnim.disablesAnimations = true
             withTransaction(noAnim) { state.canvasSize = openCanvasSize }
             window?.setFrame(windowFrame(for: screen), display: true)
+            // The shape moved under a pointer that may not move again before the next click.
+            updatePointerPassThrough()
 
         case .makeKeyAndOrderFront:
             guard let screen else { return }
@@ -553,7 +562,8 @@ final class PanelController {
 
     private func installPointerTracking() {
         guard pointerMonitors.isEmpty else { return }
-        let events: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged]
+        // Mouse-ups too: a drag out of the shape keeps the window until release (see below).
+        let events: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .leftMouseUp, .rightMouseUp]
         if let local = NSEvent.addLocalMonitorForEvents(matching: events, handler: { [weak self] event in
             self?.updatePointerPassThrough()
             return event
@@ -577,11 +587,12 @@ final class PanelController {
     private func updatePointerPassThrough() {
         guard machine.phase == .open, let window else { return }
         let frame = window.frame
-        let location = NSEvent.mouseLocation
-        // Top-down point in the canvas (the hosting view fills the window).
-        let point = CGPoint(x: location.x - frame.minX, y: frame.maxY - location.y)
+        let point = NotchLayout.canvasPoint(mouse: NSEvent.mouseLocation, windowFrame: frame)
         let ignores = NotchLayout.passesMouseThrough(point, canvasWidth: frame.width, panelSize: state.panelSize)
         guard window.ignoresMouseEvents != ignores else { return }
+        // Never drop the window mid-press (a drag that started on a control and left the shape);
+        // the mouse-up event re-evaluates.
+        if ignores && NSEvent.pressedMouseButtons != 0 { return }
         window.ignoresMouseEvents = ignores
         // Leaving the shape this way may not deliver a hover exit to the control under the edge;
         // never leave its pointing-hand cursor behind over the app below.

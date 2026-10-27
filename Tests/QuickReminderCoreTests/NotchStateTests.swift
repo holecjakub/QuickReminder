@@ -209,6 +209,19 @@ struct NotchStateTests {
         #expect(NotchLayout.passesMouseThrough(CGPoint(x: centreX, y: 700), canvasWidth: canvasWidth, panelSize: grown))
     }
 
+    /// Global bottom-left mouse coordinates → top-down canvas points, also for a window whose
+    /// screen does not start at y 0 (a display arranged above / below the main one).
+    @Test func canvasPointConversion() {
+        let frame = CGRect(x: 432, y: 1169 - 775, width: 648, height: 775)
+        #expect(NotchLayout.canvasPoint(mouse: CGPoint(x: 432, y: 1169), windowFrame: frame) == .zero, "top-left")
+        #expect(NotchLayout.canvasPoint(mouse: CGPoint(x: 756, y: 1169 - 197), windowFrame: frame) == CGPoint(x: 324, y: 197))
+        let upper = CGRect(x: -200, y: 1169 + 1080 - 775, width: 648, height: 775)   // screen above, minY ≠ 0
+        #expect(NotchLayout.canvasPoint(mouse: CGPoint(x: 124, y: 1169 + 1080 - 100), windowFrame: upper) == CGPoint(x: 324, y: 100))
+        // Round trip into the pass-through decision: centre of the title row on that screen.
+        let title = NotchLayout.canvasPoint(mouse: CGPoint(x: 124, y: 1169 + 1080 - 100), windowFrame: upper)
+        #expect(!NotchLayout.passesMouseThrough(title, canvasWidth: upper.width, panelSize: CGSize(width: 600, height: 241)))
+    }
+
     // MARK: - Open canvas (constant from open to close)
 
     /// In notch style the open window is sized at open for the tallest Set Date state, so the
