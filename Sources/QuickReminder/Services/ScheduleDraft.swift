@@ -16,8 +16,10 @@ final class ScheduleDraft {
     private(set) var draft: Date
     /// The type field. A change is parsed once (`parsed`); a date moves `draft` with it.
     var text: String {
-        didSet { if text != oldValue { reparse() } }
+        didSet { if text != oldValue { isDirty = true; reparse() } }
     }
+    /// The user typed or used a control since Set Date opened (prefilled text does not count).
+    private(set) var isDirty = false
     /// `ScheduleInput.resolve(text)` as of the last change.
     private(set) var parsed: ScheduleInput.Result
     /// Set, a preset or Clear already ran: further commits are ignored.
@@ -53,6 +55,7 @@ final class ScheduleDraft {
     // MARK: Controls (each clears the typed text)
 
     func setFromControls(_ date: Date) {
+        isDirty = true
         draft = date
         text = ""
     }
@@ -147,6 +150,23 @@ final class ScheduleDraft {
         committed = true
         announcement?.cancel()
         return outcome
+    }
+
+    /// What ✓ (save the reminder) does while the in-notch section is open.
+    enum SaveDecision: Equatable {
+        /// Nothing was touched: close the section, save with the reminder's current date (an
+        /// untouched default such as tomorrow 9:00 never sneaks into a reminder).
+        case saveAsIs
+        /// The user changed the draft: what they see is what gets saved — Set, then save.
+        case commitThenSave(Outcome)
+        /// The typed text is not a date: beep, keep the section open, save nothing.
+        case invalid
+    }
+
+    func prepareSave() -> SaveDecision {
+        guard isDirty, !committed else { return .saveAsIs }
+        guard let outcome = set() else { return .invalid }
+        return .commitThenSave(outcome)
     }
 
     /// The one preset card to highlight for the current draft.
