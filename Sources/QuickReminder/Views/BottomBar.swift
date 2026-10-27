@@ -132,10 +132,14 @@ struct BottomBar: View {
             ], belowPanelAt: NSEvent.mouseLocation.x - 12)
         } label: {
             icon("calendar.badge.clock", active: dueDate != nil || setDateOpen)
+                // Open state of its own, also when a date already tints the icon.
+                .background(Circle().fill(accent.opacity(setDateOpen ? 0.22 : 0)).padding(Theme.s(3)))
+                .animation(HoverMotion.highlightAnimation, value: setDateOpen)
         }
         .buttonStyle(HoverHighlightButtonStyle())
         .accessibilityLabel("Set date and time")
         .accessibilityValue(setDateOpen ? "Set Date shown" : "")
+        .accessibilityAddTraits(pickerStyle == .notch ? .isToggle : [])
         .accessibilityHint(pickerStyle == .notch ? (setDateOpen ? "Hides Set Date" : "Shows Set Date below") : "")
         .popover(isPresented: $showSchedulePopover, arrowEdge: .bottom) {
             SchedulePopover(
@@ -205,6 +209,9 @@ struct BottomBar: View {
                 .animation(.easeInOut(duration: 0.18), value: canSave)
                 .accessibilityLabel("Save reminder")
                 .keyboardShortcut(setDateOpen ? nil : KeyboardShortcut(.return, modifiers: .command))
+                // While Set Date is open ✓ means more than save; say so (ScheduleDraft.prepareSave).
+                .help(setDateOpen ? "Applies the date in Set Date, then saves" : "Save reminder")
+                .accessibilityHint(setDateOpen ? "Applies the date in Set Date, then saves" : "")
             }
         }
     }

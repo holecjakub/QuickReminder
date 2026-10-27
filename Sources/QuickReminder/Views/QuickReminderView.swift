@@ -109,8 +109,13 @@ struct QuickReminderView: View {
             showSchedulePopover = false
         }
         .onReceive(NotificationCenter.default.publisher(for: .panelDismissPopovers)) { _ in
-            showListPicker = false
-            showLocationField = false
+            // One level per Esc: an open list / location popover first (the bottom bar is
+            // reachable while Set Date is open), only then Set Date.
+            if showListPicker || showLocationField {
+                showListPicker = false
+                showLocationField = false
+                return
+            }
             // In-notch Set Date steps back one level per Esc: calendar → controls → closed.
             if schedulingInNotch {
                 PanelController.shared.setSchedule(notch.schedule.afterEscape)

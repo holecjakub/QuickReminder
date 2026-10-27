@@ -114,13 +114,6 @@ enum NotchLayout {
         screenFrame.maxY - visibleFrame.minY - scheduleScreenMargin
     }
 
-    /// Where the in-notch Set Date section starts, from the top of the panel (hosting view,
-    /// top-down): right below the plain panel, whose content (header … bottom bar + its 20 pt inset)
-    /// stays exactly where it is.
-    @MainActor static func scheduleSectionTop(notchBandHeight: CGFloat, textScale s: CGFloat) -> CGFloat {
-        notchBandHeight + contentHeight(textScale: s)
-    }
-
     /// The bottom of the band whose clicks cancel scheduling: the header, title and notes. The chip
     /// slot and the bottom bar below it keep their own meaning while the section is open (the
     /// calendar button toggles the section, the date chip is a no-op, ✓ saves, see SPEC), and the
@@ -133,6 +126,23 @@ enum NotchLayout {
     /// click outside the popover; the click still reaches what it landed on.
     static func clickCancelsSchedule(atY y: CGFloat, bandBottom: CGFloat, schedule: ScheduleExpansion) -> Bool {
         schedule != .none && y < bandBottom
+    }
+
+    /// The decision the panel's mouse-down monitor makes, from a top-down point in the hosting
+    /// view: only the header / title / notes band cancels — never the chip slot, the bottom bar
+    /// (its ✓ must reach `prepareSave` with the edit intact) or the section.
+    @MainActor static func clickCancelsSchedule(atY y: CGFloat, notchBandHeight: CGFloat, textScale s: CGFloat,
+                                                schedule: ScheduleExpansion) -> Bool {
+        clickCancelsSchedule(atY: y, bandBottom: scheduleCancelBandBottom(notchBandHeight: notchBandHeight, textScale: s),
+                             schedule: schedule)
+    }
+
+    /// While the panel is open the window ignores the mouse when the pointer is outside the black
+    /// shape (`panelSize`, open radii; top-down hosting-view point), so the transparent part of the
+    /// tall canvas never swallows a click, scroll or hover meant for the app below.
+    static func passesMouseThrough(_ point: CGPoint, canvasWidth: CGFloat, panelSize: CGSize) -> Bool {
+        !NotchShape.contains(point, canvasWidth: canvasWidth, shapeSize: panelSize,
+                             topCornerRadius: openTopRadius, bottomCornerRadius: openBottomRadius)
     }
 
     /// Vertical rhythm of the open content below the notch band (SPEC §4) at text scale `s`.
@@ -230,12 +240,15 @@ enum NotchLayout {
     /// Window / container size: open panel plus overshoot room on the sides and bottom.
     @MainActor static var canvasSize: CGSize { canvasSize(for: openSize) }
 
-    /// The window / canvas while the panel is open, set once per open (`switchToOpenCanvas`) and
-    /// never changed by Set Date. In notch style it already fits the tallest schedule state (the
-    /// calendar, screen-clamped), so growing and shrinking the blob only animates SwiftUI state:
-    /// resizing the window mid-spring made AppKit and SwiftUI disagree for a frame (a blank panel,
-    /// then the content offset and springing back). The transparent area below the black passes
-    /// clicks through (`NotchWindow`) and the local monitor still hit-tests the silhouette.
+    /// The window / canvas while the panel is open, set once per open (`switchToOpenCanvas`; a
+    /// display change relays it out) and never changed by Set Date. In notch style it already fits
+    /// the tallest schedule state (the calendar, screen-clamped), so growing and shrinking the blob
+    /// only animates SwiftUI state: resizing the window mid-spring made AppKit and SwiftUI disagree
+    /// for a frame (a blank panel, then the content offset and springing back). The window would
+    /// otherwise take every click in its transparent part, so while the panel is open it ignores
+    /// the mouse whenever the pointer is outside the black shape (`passesMouseThrough`, driven by
+    /// pointer monitors in `PanelController`): those clicks reach the app below, and the global
+    /// click monitor closes the panel.
     static func openCanvasSize(openSize: CGSize, tallestScheduleSize: CGSize, style: SetDateStyle) -> CGSize {
         switch style {
         case .notch: return canvasSize(for: CGSize(width: openSize.width, height: max(openSize.height, tallestScheduleSize.height)))

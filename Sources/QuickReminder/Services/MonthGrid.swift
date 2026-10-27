@@ -24,6 +24,12 @@ enum MonthGrid {
         return cells
     }
 
+    /// The grid row (0…5) of `day` in its own month's grid.
+    static func week(of day: Date, calendar: Calendar = .current) -> Int? {
+        let start = calendar.startOfDay(for: day)
+        return cells(for: day, calendar: calendar).firstIndex { $0 == start }.map { $0 / 7 }
+    }
+
     /// Very short weekday names ("M", "T" / "P", "Ú") in grid order.
     static func weekdaySymbols(calendar: Calendar = .current) -> [String] {
         let symbols = calendar.veryShortStandaloneWeekdaySymbols

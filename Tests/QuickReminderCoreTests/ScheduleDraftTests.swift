@@ -153,4 +153,12 @@ struct ScheduleDraftTests {
         #expect(d.prepareSave() == .invalid)
         #expect(!d.committed)
     }
+
+    @Test func afterACommitTheSaveGoesThroughAsIs() {
+        let d = draft()
+        d.setTime(hour: 15)
+        _ = d.set()
+        #expect(d.committed)
+        #expect(d.prepareSave() == .saveAsIs, "the date is already written; never Set twice")
+    }
 }

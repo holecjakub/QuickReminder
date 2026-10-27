@@ -108,8 +108,8 @@ struct NotchMachineScheduleTests {
         #expect(s.schedule == .none)
     }
 
-    /// The canvas is sized once per open (`switchToOpenCanvas`), which also resets the schedule.
-    @Test func reopenSizesTheCanvasOnceAndStartsPlain() {
+    /// After parking, a reopen switches to a fresh open canvas exactly once and starts plain.
+    @Test func reopenAfterParkingSwitchesCanvasOnceAndStartsPlain() {
         var m = NotchMachine()
         _ = m.handle(.screenChanged(hasNotch: true))
         let firstOpen = m.handle(.show)
@@ -119,7 +119,9 @@ struct NotchMachineScheduleTests {
         _ = m.handle(.closeTimerFired(hasNotch: true))
         #expect(m.phase == .closed(parked: true))
         let reopen = m.handle(.show)
-        #expect(reopen.contains(.switchToOpenCanvas))
+        #expect(reopen.filter { $0 == .switchToOpenCanvas }.count == 1)
+        #expect(!reopen.contains(where: { if case .animateSchedule = $0 { return true } else { return false } }),
+                "the plain start is set without animation inside switchToOpenCanvas")
         #expect(m.schedule == .none)
     }
 

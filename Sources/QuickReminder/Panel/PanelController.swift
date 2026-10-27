@@ -132,7 +132,7 @@ final class PanelController {
             var noAnim = Transaction(); noAnim.disablesAnimations = true
             // The style is read once per open: the canvas is sized for it and stays that size until
             // the panel closes (Set Date never resizes the window).
-            openStyle = Self.currentSetDateStyle
+            openStyle = SetDateStyle.current
             withTransaction(noAnim) {
                 state.canvasSize = openCanvasSize
                 if state.schedule != .none { state.schedule = .none }   // every open starts plain
@@ -164,6 +164,8 @@ final class PanelController {
         case .setIgnoresMouse(let ignores):
             // During the collapse / saved hold no input is needed; clicks reach what is below.
             window?.ignoresMouseEvents = ignores
+            // Open: only the black shape takes the mouse (the canvas below it is transparent).
+            if !ignores { updatePointerPassThrough() }
 
         case .resignFirstResponder:
             window?.makeFirstResponder(nil)
@@ -171,9 +173,11 @@ final class PanelController {
         // Monitors & notifications
         case .installLocalMonitor:
             installLocalEventMonitor()
+            installPointerTracking()
 
         case .removeLocalMonitor:
             removeLocalEventMonitor()
+            removePointerTracking()
 
         case .postWillShow:
             NotificationCenter.default.post(name: .panelWillShow, object: nil)
@@ -220,6 +224,7 @@ final class PanelController {
 
         case .setSettled(let settled):
             state.isSettled = settled
+            if settled { updatePointerPassThrough() }
 
         case .swellHover:
             withAnimation(NotchLayout.hoverInAnimation) { state.isHovering = true }
@@ -232,7 +237,8 @@ final class PanelController {
 
         case .animateSchedule(let expansion):
             withAnimation(NotchLayout.effectiveSchedule) { state.schedule = expansion }
-
+            // The blob is about to grow / shrink under a resting pointer: decide from its target.
+            updatePointerPassThrough()
 
         // Timers
         case .scheduleClose:
@@ -391,11 +397,6 @@ final class PanelController {
                                    style: openStyle)
     }
 
-    /// The persisted style (`-datePickerStyle` in the argument domain overrides it for a run).
-    private static var currentSetDateStyle: SetDateStyle {
-        UserDefaults.standard.string(forKey: SetDateStyle.defaultsKey).flatMap(SetDateStyle.init(rawValue:)) ?? .defaultStyle
-    }
-
     /// Window covers the fully-open panel, anchored to the top edge, centred on the notch.
     private func windowFrame(for screen: NSScreen) -> NSRect {
         let size = openCanvasSize
@@ -524,10 +525,9 @@ final class PanelController {
                 // In-notch Set Date: a click on the header / title / notes cancels scheduling (like a
                 // click outside the popover) and still lands where it was aimed.
                 let topDown = hosting.isFlipped ? point.y : hosting.bounds.maxY - point.y
-                let bandBottom = NotchLayout.scheduleCancelBandBottom(notchBandHeight: self.state.notchBandHeight,
-                                                                      textScale: NotchLayout.cachedTextScale)
                 if event.type == .leftMouseDown,
-                   NotchLayout.clickCancelsSchedule(atY: topDown, bandBottom: bandBottom, schedule: self.state.schedule) {
+                   NotchLayout.clickCancelsSchedule(atY: topDown, notchBandHeight: self.state.notchBandHeight,
+                                                    textScale: NotchLayout.cachedTextScale, schedule: self.state.schedule) {
                     NotificationCenter.default.post(name: .panelCancelSchedule, object: nil)
                 }
             }
@@ -540,6 +540,52 @@ final class PanelController {
             NSEvent.removeMonitor(localEventMonitor)
             self.localEventMonitor = nil
         }
+    }
+
+    // MARK: - Pointer pass-through (open panel)
+
+    /// While open, the window is the full (in notch style tall) canvas but only the black shape
+    /// should take the mouse. Pointer moves over our window arrive at the local monitor, moves
+    /// anywhere else (including our transparent area while it ignores the mouse) at the global one;
+    /// either way `ignoresMouseEvents` follows the pointer, so a click below the panel reaches the
+    /// app there and the global click monitor closes the panel, as for any click outside.
+    private var pointerMonitors: [Any] = []
+
+    private func installPointerTracking() {
+        guard pointerMonitors.isEmpty else { return }
+        let events: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged]
+        if let local = NSEvent.addLocalMonitorForEvents(matching: events, handler: { [weak self] event in
+            self?.updatePointerPassThrough()
+            return event
+        }) { pointerMonitors.append(local) }
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: events, handler: { [weak self] _ in
+            if Thread.isMainThread {
+                MainActor.assumeIsolated { self?.updatePointerPassThrough() }
+            } else {
+                DispatchQueue.main.async { self?.updatePointerPassThrough() }
+            }
+        }) { pointerMonitors.append(global) }
+    }
+
+    private func removePointerTracking() {
+        pointerMonitors.forEach(NSEvent.removeMonitor)
+        pointerMonitors.removeAll()
+    }
+
+    /// Open phase only: the collapse / saved hold set `ignoresMouseEvents` themselves, and the
+    /// parked window takes the mouse for hover and click on the notch.
+    private func updatePointerPassThrough() {
+        guard machine.phase == .open, let window else { return }
+        let frame = window.frame
+        let location = NSEvent.mouseLocation
+        // Top-down point in the canvas (the hosting view fills the window).
+        let point = CGPoint(x: location.x - frame.minX, y: frame.maxY - location.y)
+        let ignores = NotchLayout.passesMouseThrough(point, canvasWidth: frame.width, panelSize: state.panelSize)
+        guard window.ignoresMouseEvents != ignores else { return }
+        window.ignoresMouseEvents = ignores
+        // Leaving the shape this way may not deliver a hover exit to the control under the edge;
+        // never leave its pointing-hand cursor behind over the app below.
+        if ignores { NSCursor.arrow.set() }
     }
 
     /// Hit-test against the silhouette as currently drawn (top-anchored, centred in the canvas).

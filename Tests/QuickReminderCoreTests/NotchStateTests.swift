@@ -125,17 +125,6 @@ struct NotchStateTests {
         #expect(NotchLayout.scheduleContentHeight(textScale: 1, calendar: true) == 712, "480 + 10 + 26 + 18 + 168 + 10")
     }
 
-    /// The plain panel is the fixed top of every grown state: the section starts where the plain
-    /// panel ends, so nothing above it moves when the blob grows.
-    @Test func theSectionIsAppendedBelowThePlainPanel() {
-        for band in [33, 39] as [CGFloat] {
-            let plain = NotchLayout.openSize(notchBandHeight: band)
-            #expect(NotchLayout.scheduleSectionTop(notchBandHeight: band, textScale: NotchLayout.textScale) == plain.height,
-                    "section top = plain panel bottom (band \(band))")
-        }
-        #expect(abs(NotchLayout.scheduleSectionTop(notchBandHeight: 39, textScale: 1) - (39 + 202)) < 0.01)
-    }
-
     @Test func scheduleSizesGrowOnlyInHeight() {
         let band = NotchLayout.defaultNotchBandHeight
         let plain = NotchLayout.openSize(notchBandHeight: band)
@@ -186,17 +175,38 @@ struct NotchStateTests {
 
     /// Header, title and notes cancel; the chip slot and the bottom bar below them keep their own
     /// meaning (calendar button toggles, date chip no-op, ✓ saves), and the section does not cancel.
+    /// Uses the overload the panel's mouse-down monitor calls.
     @Test func clickOnTheTextRowsCancelsScheduling() {
+        func cancels(_ y: CGFloat, _ schedule: ScheduleExpansion = .controls) -> Bool {
+            NotchLayout.clickCancelsSchedule(atY: y, notchBandHeight: 39, textScale: 1, schedule: schedule)
+        }
         let bandBottom = NotchLayout.scheduleCancelBandBottom(notchBandHeight: 39, textScale: 1)
-        let sectionTop = NotchLayout.scheduleSectionTop(notchBandHeight: 39, textScale: 1)
         #expect(abs(bandBottom - (39 + 100)) < 0.01, "header + title + notes")
-        #expect(NotchLayout.clickCancelsSchedule(atY: bandBottom - 30, bandBottom: bandBottom, schedule: .controls), "title row")
-        #expect(NotchLayout.clickCancelsSchedule(atY: 60, bandBottom: bandBottom, schedule: .calendar), "header")
-        let barCentre = bandBottom + 26 + 8 + 24
-        #expect(!NotchLayout.clickCancelsSchedule(atY: bandBottom + 10, bandBottom: bandBottom, schedule: .controls), "date chip slot")
-        #expect(!NotchLayout.clickCancelsSchedule(atY: barCentre, bandBottom: bandBottom, schedule: .controls), "bottom bar")
-        #expect(!NotchLayout.clickCancelsSchedule(atY: sectionTop + 1, bandBottom: bandBottom, schedule: .controls), "inside the section")
-        #expect(!NotchLayout.clickCancelsSchedule(atY: bandBottom - 30, bandBottom: bandBottom, schedule: .none), "nothing to cancel")
+        #expect(cancels(60, .calendar), "header")
+        #expect(cancels(105), "title row")
+        #expect(cancels(128), "notes row")
+        #expect(!cancels(152), "date chip slot")
+        #expect(!cancels(197), "bottom bar centre (calendar button, ✓): must reach prepareSave with the edit")
+        #expect(!cancels(39 + 202 + 10), "inside the section")
+        #expect(!cancels(105, .none), "nothing to cancel")
+    }
+
+    /// While open only the black shape takes the mouse; the tall canvas around and below it passes
+    /// clicks, scrolls and hovers through to the app below.
+    @Test func onlyTheBlackShapeTakesTheMouse() {
+        let canvasWidth: CGFloat = 648
+        let plain = CGSize(width: 600, height: 241)
+        let grown = CGSize(width: 600, height: 519)
+        let centreX = canvasWidth / 2
+        #expect(!NotchLayout.passesMouseThrough(CGPoint(x: centreX, y: 100), canvasWidth: canvasWidth, panelSize: plain), "title")
+        #expect(!NotchLayout.passesMouseThrough(CGPoint(x: 24 + 560, y: 197), canvasWidth: canvasWidth, panelSize: plain), "✓")
+        #expect(NotchLayout.passesMouseThrough(CGPoint(x: centreX, y: 400), canvasWidth: canvasWidth, panelSize: plain),
+                "below the plain panel: the app below gets it")
+        #expect(NotchLayout.passesMouseThrough(CGPoint(x: 10, y: 100), canvasWidth: canvasWidth, panelSize: plain), "side overshoot room")
+        #expect(NotchLayout.passesMouseThrough(CGPoint(x: 24 + 2, y: 239), canvasWidth: canvasWidth, panelSize: plain), "outside the rounded corner")
+        #expect(!NotchLayout.passesMouseThrough(CGPoint(x: centreX, y: 400), canvasWidth: canvasWidth, panelSize: grown),
+                "the same spot is the Set Date section once the blob has grown")
+        #expect(NotchLayout.passesMouseThrough(CGPoint(x: centreX, y: 700), canvasWidth: canvasWidth, panelSize: grown))
     }
 
     // MARK: - Open canvas (constant from open to close)
