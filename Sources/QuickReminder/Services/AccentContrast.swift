@@ -3,11 +3,14 @@ import SwiftUI
 
 /// Text on a fill of the list's colour (the Set button, the selected time chip, the picked day).
 /// The colour is the user's list colour, so white is not always readable: white on system orange
-/// is ~2.3:1, on yellow ~1.5:1. Body-size text needs 4.5:1 (WCAG 1.4.3); the label is white when
-/// it reaches that, otherwise black (whichever of the two contrasts more).
+/// is ~2.3:1, on yellow ~1.5:1. The labels are short, semibold and sit on a solid prominent fill,
+/// so the bar is 3:1 (WCAG's large/bold text and UI-component level), the same trade-off macOS
+/// makes with white on its blue default buttons (~4:1). White when it reaches that, otherwise
+/// black (whichever of the two contrasts more): blue, purple and red keep white; orange, green,
+/// yellow and light blue get black.
 enum AccentContrast {
-    /// WCAG minimum for normal-size text.
-    static let minimumTextContrast = 4.5
+    /// Minimum contrast for white on the accent (WCAG 1.4.3 large text / 1.4.11 components).
+    static let minimumTextContrast = 3.0
 
     /// WCAG relative luminance of an sRGB colour (components 0…1).
     static func relativeLuminance(red: Double, green: Double, blue: Double) -> Double {
