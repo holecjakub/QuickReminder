@@ -14,6 +14,15 @@ struct BottomBar: View {
     @Binding var showSchedulePopover: Bool
     /// Custom…: opens Set Date in the current style (popover, or the notch grows).
     let onOpenSetDate: () -> Void
+    /// The calendar button in notch style: opens Set Date below the bar, or closes it again.
+    let onToggleSetDate: () -> Void
+    /// The in-notch Set Date section is open: the calendar button shows as active, and ⌘↩ belongs
+    /// to Set (the ✓ keeps its click).
+    let setDateOpen: Bool
+    /// The in-notch Location section is open (location button active, ⌘↩ belongs to Done).
+    let locationOpen: Bool
+    /// The location button in notch style: opens Location below the bar, or closes it again.
+    let onToggleLocation: () -> Void
     /// Which preset wrote the date (menu presets and the popover record it).
     @Binding var presetPick: PresetPick?
     /// The title's live, undismissed date phrase: prefilled into the Set Date popover.
@@ -100,7 +109,7 @@ struct BottomBar: View {
         Button {
             // In notch: the button grows the panel straight into Set Date (its presets replace the
             // menu's); the native preset menu stays the popover style's entry point.
-            if pickerStyle == .notch { onOpenSetDate(); return }
+            if pickerStyle == .notch { onToggleSetDate(); return }
             let now = AppClock.now
             let presets: [PopUpMenu.Item] = [DatePreset.inOneHour, .evening, .tomorrow, .weekend, .nextWeek].map { preset in
                 let date = DatePreset.date(for: preset, now: now)
@@ -126,10 +135,16 @@ struct BottomBar: View {
                 .action("Custom…", systemImage: "calendar.badge.clock", keyEquivalentHint: "d") { onOpenSetDate() },
             ], belowPanelAt: NSEvent.mouseLocation.x - 12)
         } label: {
-            icon("calendar.badge.clock", active: dueDate != nil)
+            icon("calendar.badge.clock", active: dueDate != nil || setDateOpen)
+                // Open state of its own, also when a date already tints the icon.
+                .background(Circle().fill(accent.opacity(setDateOpen ? 0.22 : 0)).padding(Theme.s(3)))
+                .animation(HoverMotion.highlightAnimation, value: setDateOpen)
         }
         .buttonStyle(HoverHighlightButtonStyle())
         .accessibilityLabel("Set date and time")
+        .accessibilityValue(setDateOpen ? "Set Date shown" : "")
+        .accessibilityAddTraits(pickerStyle == .notch ? .isToggle : [])
+        .accessibilityHint(pickerStyle == .notch ? (setDateOpen ? "Hides Set Date" : "Shows Set Date below") : "")
         .popover(isPresented: $showSchedulePopover, arrowEdge: .bottom) {
             SchedulePopover(
                 selectedDate: $dueDate,
@@ -151,12 +166,23 @@ struct BottomBar: View {
     }
 
     private var locationButton: some View {
-        Button { showLocationField = true } label: {
-            icon(locationText.isEmpty ? "location" : "location.fill", active: !locationText.isEmpty)
+        Button {
+            // In notch: the panel grows into Location (like the calendar button and Set Date);
+            // the glass popover stays the popover style's.
+            if pickerStyle == .notch { onToggleLocation() } else { showLocationField = true }
+        } label: {
+            icon(locationText.isEmpty ? "location" : "location.fill", active: !locationText.isEmpty || locationOpen)
                 .contentTransition(.symbolEffect(.replace))
+                .background(Circle().fill(accent.opacity(locationOpen ? 0.22 : 0)).padding(Theme.s(3)))
+                .animation(HoverMotion.highlightAnimation, value: locationOpen)
         }
         .buttonStyle(HoverHighlightButtonStyle())
-        .accessibilityLabel("Add location")
+        // The label names the location, the value carries only the open state (like the calendar
+        // toggle's).
+        .accessibilityLabel(locationText.isEmpty ? "Add location" : "Location, \(locationText)")
+        .accessibilityValue(locationOpen ? "Location shown" : "")
+        .accessibilityAddTraits(pickerStyle == .notch ? .isToggle : [])
+        .accessibilityHint(pickerStyle == .notch ? (locationOpen ? "Hides Location" : "Shows Location below") : "")
         .popover(isPresented: $showLocationField, arrowEdge: .bottom) {
             locationPopover
         }
@@ -197,7 +223,11 @@ struct BottomBar: View {
                 .disabled(!canSave)
                 .animation(.easeInOut(duration: 0.18), value: canSave)
                 .accessibilityLabel("Save reminder")
-                .keyboardShortcut(.return, modifiers: .command)
+                .keyboardShortcut(setDateOpen || locationOpen ? nil : KeyboardShortcut(.return, modifiers: .command))
+                // While a section is open ✓ means more than save; say so (ScheduleDraft.prepareSave,
+                // LocationDraft.saveDecision).
+                .help(saveHelp)
+                .accessibilityHint(setDateOpen || locationOpen ? saveHelp : "")
             }
         }
     }
@@ -216,6 +246,12 @@ struct BottomBar: View {
             }
         }
         .padding(14)
+    }
+
+    private var saveHelp: String {
+        if setDateOpen { return "Applies the date in Set Date, then saves" }
+        if locationOpen { return "Applies the location, then saves" }
+        return "Save reminder"
     }
 
     private func handleSave() {

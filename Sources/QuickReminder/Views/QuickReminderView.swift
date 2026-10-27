@@ -23,8 +23,8 @@ struct QuickReminderView: View {
     @State private var locationText: String = ""
     @State private var showListPicker: Bool = false
     @State private var showLocationField: Bool = false
-    /// The Set Date popover (Popover style only). The in-notch section has no flag of its own: it
-    /// is shown while `notch.schedule != .none`, the panel's single source of truth.
+    /// The Set Date popover (Popover style only). The in-notch sections have no flags of their own:
+    /// they are shown from `notch.section`, the panel's single source of truth.
     @State private var showSchedulePopover: Bool = false
     @State private var saveErrorText: String? = nil
     @State private var suggestion: DateSuggestion? = nil
@@ -32,18 +32,24 @@ struct QuickReminderView: View {
     /// The preset that wrote `dueDate`, if one did: Set Date highlights it rather than every preset
     /// landing on the same minute (`DatePreset.highlighted`).
     @State private var presetPick: PresetPick? = nil
+    /// Lets the open in-notch section keep its edit when the panel switches to the other one.
+    @State private var handoff = SectionHandoff()
 
 
     @Environment(\.listAccent) private var accent
 
     /// Something Esc should close before the panel (popovers, the in-notch section).
-    private var anyPopoverShown: Bool { showListPicker || showLocationField || showSchedulePopover || schedulingInNotch }
+    private var anyPopoverShown: Bool { showListPicker || showLocationField || showSchedulePopover || sectionOpen }
 
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
 
     /// The in-notch Set Date section is shown (the blob has grown for it). Driven by the panel's
     /// schedule state, so the section and the blob change in the same spring transaction.
-    private var schedulingInNotch: Bool { notch.schedule != .none }
+    private var schedulingInNotch: Bool { notch.section.isSchedule }
+    /// The in-notch Location section is shown.
+    private var locationInNotch: Bool { notch.section == .location }
+    /// Any in-notch section (Set Date or Location) is shown below the bottom bar.
+    private var sectionOpen: Bool { notch.section != .none }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -66,6 +72,11 @@ struct QuickReminderView: View {
             )
             .padding(.top, 10)
 
+            // The plain panel never changes for a section: chip slot and bottom bar stay put.
+            regularBottom
+
+            // In notch: Set Date or Location (one at a time) is appended below the bottom bar; the
+            // blob grows downward only.
             if schedulingInNotch {
                 ScheduleNotchSection(
                     selectedDate: $dueDate,
@@ -73,23 +84,32 @@ struct QuickReminderView: View {
                     accent: accent,
                     initialText: dueDate == nil ? suggestion?.matchedText : nil,
                     onConsumeSuggestion: stripSuggestionPhrase,
-                    showsCalendar: notch.schedule == .calendar,
+                    showsCalendar: notch.section == .calendar,
                     onToggleCalendar: {
-                        PanelController.shared.setSchedule(notch.schedule == .calendar ? .controls : .calendar)
+                        PanelController.shared.setSection(notch.section == .calendar ? .controls : .calendar)
                     },
-                    onClose: { PanelController.shared.setSchedule(.none) }
+                    onClose: { PanelController.shared.setSection(.none) },
+                    onSaveReminder: { saveReminder(afterSection: true) },
+                    handoff: handoff
                 )
-                // Takes the rest of the panel; its rows scroll when the screen clamps the height.
+                // Takes the rest of the grown panel; only its rows scroll when the screen clamps the
+                // height (everything above is the fixed plain panel).
                 .frame(maxHeight: .infinity, alignment: .top)
                 .padding(.bottom, Theme.horizontalPadding)
-                // The section's rows stagger in themselves; leaving, it fades quicker than it came.
-                .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.12)),
-                                        removal: .opacity.animation(.easeOut(duration: 0.1))))
-            } else {
-                regularBottom
-                    .transition(.asymmetric(
-                        insertion: .opacity.animation(.easeOut(duration: 0.18).delay(0.12)),
-                        removal: .opacity.animation(.easeOut(duration: 0.08))))
+                // The section's rows stagger in themselves; leaving, it fades quicker than it came
+                // while the blob retracts over it.
+                .notchSectionTransition()
+            } else if locationInNotch {
+                LocationNotchSection(
+                    locationText: $locationText,
+                    accent: accent,
+                    onClose: { PanelController.shared.setSection(.none) },
+                    onSaveReminder: { saveReminder(afterSection: true) },
+                    handoff: handoff
+                )
+                .frame(maxHeight: .infinity, alignment: .top)
+                .padding(.bottom, Theme.horizontalPadding)
+                .notchSectionTransition()
             }
         }
         .padding(.horizontal, Theme.horizontalPadding + NotchLayout.openTopRadius)
@@ -107,22 +127,27 @@ struct QuickReminderView: View {
             showSchedulePopover = false
         }
         .onReceive(NotificationCenter.default.publisher(for: .panelDismissPopovers)) { _ in
-            showListPicker = false
-            showLocationField = false
+            // One level per Esc: an open list / location popover first (the bottom bar is
+            // reachable while Set Date is open), only then Set Date.
+            if showListPicker || showLocationField {
+                showListPicker = false
+                showLocationField = false
+                return
+            }
             // In-notch Set Date steps back one level per Esc: calendar → controls → closed.
-            if schedulingInNotch {
-                PanelController.shared.setSchedule(notch.schedule.afterEscape)
+            if sectionOpen {
+                PanelController.shared.setSection(notch.section.afterEscape)
             } else {
                 showSchedulePopover = false
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .panelCancelSchedule)) { _ in
-            if schedulingInNotch { PanelController.shared.setSchedule(.none) }
+        .onReceive(NotificationCenter.default.publisher(for: .panelCancelSection)) { _ in
+            if sectionOpen { PanelController.shared.setSection(.none) }
         }
         .onChange(of: anyPopoverShown) { _, shown in
             PanelController.shared.popoverIsOpen = shown
         }
-        .onChange(of: showSchedulePopover || schedulingInNotch) { _, isShown in
+        .onChange(of: showSchedulePopover || sectionOpen) { _, isShown in
             // Hand the keyboard back to the panel's title row once Set Date closes.
             if !isShown { DispatchQueue.main.async { PanelController.shared.restoreKeyFocus() } }
         }
@@ -132,7 +157,8 @@ struct QuickReminderView: View {
         .onChange(of: dueDate) { _, newValue in if newValue == nil { updateSuggestion(for: title) } }
     }
 
-    /// Date chip / suggestion / error slot and the bottom bar (the in-notch Set Date replaces both).
+    /// Date chip / suggestion / error slot and the bottom bar (always shown, also while the in-notch
+    /// Set Date section is open below them).
     private var regularBottom: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Fixed-height slot for the date chip / suggestion / error, so the bottom bar never
@@ -163,10 +189,14 @@ struct QuickReminderView: View {
                 flagged: $flagged,
                 locationText: $locationText,
                 canSave: canSave,
-                onSave: saveReminder,
+                onSave: { saveReminder() },
                 showLocationField: $showLocationField,
                 showSchedulePopover: $showSchedulePopover,
                 onOpenSetDate: openSetDate,
+                onToggleSetDate: toggleSetDate,
+                setDateOpen: schedulingInNotch,
+                locationOpen: locationInNotch,
+                onToggleLocation: toggleLocation,
                 presetPick: $presetPick,
                 suggestionText: suggestion?.matchedText,
                 onConsumeSuggestion: stripSuggestionPhrase,
@@ -299,25 +329,48 @@ struct QuickReminderView: View {
     private func openSetDate() {
         switch pickerStyle {
         // Already open (e.g. on the calendar): ⌘D must not collapse it back to the controls.
-        case .notch: if !schedulingInNotch { PanelController.shared.setSchedule(.controls) }
+        case .notch: if !schedulingInNotch { switchSection(to: .controls) }
         case .popover: showSchedulePopover = true
         }
     }
 
-    /// ↩ in the title or notes: Set while the in-notch section is open, otherwise save.
+    /// ↩ in the title or notes: the open in-notch section's commit (Set / Done), otherwise save.
     private func submitFromTextRow() {
-        switch ScheduleCommit.textRowSubmit(schedulingInNotch: schedulingInNotch, canSave: canSave) {
-        case .setSchedule: NotificationCenter.default.post(name: .scheduleCommitRequested, object: nil)
+        switch ScheduleCommit.textRowSubmit(sectionOpen: sectionOpen, canSave: canSave) {
+        case .commitSection: NotificationCenter.default.post(name: .sectionCommitRequested, object: nil)
         case .saveReminder: saveReminder()
         case .none: break
         }
     }
 
-    private func saveReminder() {
+    /// The calendar button in notch style: opens Set Date, or closes it (Cancel) when it is open.
+    private func toggleSetDate() {
+        if schedulingInNotch { PanelController.shared.setSection(.none) } else { switchSection(to: .controls) }
+    }
+
+    /// Opens `target`. When the other section is shown, its edit is kept first (Location: what was
+    /// typed; Set Date: an edited date is Set), like ✓ would; an invalid typed date blocks the
+    /// switch (the section beeps). Closing a section (Cancel, Esc, its own button) never writes.
+    private func switchSection(to target: NotchSection) {
+        if sectionOpen, notch.section != target, !handoff.commitForSwitch() { return }
+        PanelController.shared.setSection(target)
+    }
+
+    /// The location button in notch style: opens Location below the bar (switching over from Set
+    /// Date if that is open), or closes it again.
+    private func toggleLocation() {
+        if locationInNotch { PanelController.shared.setSection(.none) } else { switchSection(to: .location) }
+    }
+
+    /// ✓ (and ⌘↩ when no section is open). While an in-notch section is open, ✓ asks it first:
+    /// Set Date (`ScheduleDraft.prepareSave`) Sets an edited draft and then saves, saves an
+    /// untouched one as it is, and beeps without saving for an invalid one; Location
+    /// (`LocationDraft.saveDecision`) applies an edited field, then saves. The section calls back
+    /// with `afterSection: true`.
+    private func saveReminder(afterSection: Bool = false) {
         guard !saveButtonYielded else { return }   // already saved; the ✓ is flying
-        // In-notch Set Date open: ↩ / ⌘↩ mean Set (commit the draft, close the section), never save.
-        guard !schedulingInNotch else {
-            NotificationCenter.default.post(name: .scheduleCommitRequested, object: nil)
+        guard afterSection || !sectionOpen else {
+            NotificationCenter.default.post(name: .sectionSaveRequested, object: nil)
             return
         }
         // Like iOS Reminders: an un-dismissed date phrase is applied automatically on save.

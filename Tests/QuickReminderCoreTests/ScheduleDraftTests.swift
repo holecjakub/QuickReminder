@@ -116,4 +116,63 @@ struct ScheduleDraftTests {
         #expect(d.highlightedPreset(picked: nil) == .tomorrow)
         #expect(d.highlightedPreset(picked: PresetPick(preset: .weekend, date: prague(2026, 10, 24, 9, 0))) == .weekend)
     }
+
+    // MARK: ✓ while the section is open
+
+    @Test func untouchedSavesAsIs() {
+        let d = draft()
+        #expect(!d.isDirty)
+        #expect(d.prepareSave() == .saveAsIs, "the default tomorrow 9:00 must not sneak into the reminder")
+        #expect(!d.committed)
+        let prefilled = draft(initialText: "zítra")
+        #expect(!prefilled.isDirty, "a prefilled phrase is not an edit (save applies the suggestion anyway)")
+        #expect(prefilled.prepareSave() == .saveAsIs)
+    }
+
+    @Test func anEditIsCommittedBeforeSaving() throws {
+        let typed = draft(initialText: "zítra")
+        typed.text = "zítra 16:00"
+        guard case let .commitThenSave(outcome) = typed.prepareSave() else {
+            Issue.record("expected commitThenSave"); return
+        }
+        #expect(pragueString(try #require(outcome.date)) == "2026-10-24 16:00")
+        #expect(outcome.consumesSuggestion)
+        #expect(typed.committed)
+
+        let chip = draft()
+        chip.setTime(hour: 15)
+        guard case let .commitThenSave(chipOutcome) = chip.prepareSave() else {
+            Issue.record("expected commitThenSave"); return
+        }
+        #expect(pragueString(try #require(chipOutcome.date)) == "2026-10-24 15:00")
+    }
+
+    @Test func invalidTextBlocksTheSave() {
+        let d = draft()
+        d.text = "not a date"
+        #expect(d.prepareSave() == .invalid)
+        #expect(!d.committed)
+    }
+
+    @Test func afterACommitTheSaveGoesThroughAsIs() {
+        let d = draft()
+        d.setTime(hour: 15)
+        _ = d.set()
+        #expect(d.committed)
+        #expect(d.prepareSave() == .saveAsIs, "the date is already written; never Set twice")
+    }
+
+    /// Switching to Location keeps the Set Date edit, like ✓ without the save.
+    @Test func switchingKeepsTheEdit() throws {
+        #expect(draft().prepareSwitch() == .saveAsIs, "untouched: nothing written")
+        let edited = draft()
+        edited.setTime(hour: 15)
+        guard case let .commitThenSave(outcome) = edited.prepareSwitch() else {
+            Issue.record("expected the edit to be Set"); return
+        }
+        #expect(pragueString(try #require(outcome.date)) == "2026-10-24 15:00")
+        let invalid = draft()
+        invalid.text = "not a date"
+        #expect(invalid.prepareSwitch() == .invalid, "blocks the switch")
+    }
 }

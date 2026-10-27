@@ -18,6 +18,9 @@ struct ScheduleMonthGrid: View {
     private typealias M = NotchLayout.ScheduleMetrics
     private static let formatter = SuggestionDateFormatter()
 
+    /// Scroll target of a week row (the section keeps the picked day's week in view when clamped).
+    static func weekID(_ week: Int) -> String { "calendar-week-\(week)" }
+
     private var draftOnPage: Bool { MonthGrid.startOfMonth(draft) == MonthGrid.startOfMonth(month) }
 
     var body: some View {
@@ -47,6 +50,7 @@ struct ScheduleMonthGrid: View {
                         }
                     }
                     .frame(height: Theme.s(M.dayCell))
+                    .id(Self.weekID(week))
                 }
             }
         }

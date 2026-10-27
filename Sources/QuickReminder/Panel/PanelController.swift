@@ -48,6 +48,13 @@ final class PanelController {
         ) { [weak self] _ in
             Task { @MainActor in self?.relayout() }
         }
+        // Pointer monitors see nothing while a menu tracks (PopUpMenu / NSMenu) or a popover is up;
+        // re-check the pass-through when they end, before the next unmoved click.
+        for name in [NSMenu.didEndTrackingNotification, NSPopover.didCloseNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.updatePointerPassThrough() }
+            }
+        }
     }
 
     // MARK: - Public
@@ -73,10 +80,10 @@ final class PanelController {
         dispatch(.save(reduceMotion: NotchLayout.reduceMotion), on: nil)
     }
 
-    /// In-notch Set Date (Settings → Date picker style → In notch): grow the open blob for the
-    /// scheduling controls / the month grid, or settle back to the plain panel.
-    func setSchedule(_ expansion: ScheduleExpansion) {
-        dispatch(.scheduleChanged(expansion), on: targetScreen())
+    /// Notch style: grow the open blob for a section below the bottom bar (Set Date's controls or
+    /// month grid, Location), switch between them, or settle back to the plain panel (`.none`).
+    func setSection(_ section: NotchSection) {
+        dispatch(.sectionChanged(section), on: targetScreen())
     }
 
     // MARK: - Hover / tap on the closed notch (tracking comes from the SwiftUI silhouette)
@@ -130,9 +137,12 @@ final class PanelController {
             guard let screen else { return }
             let window = ensureWindow(on: screen)
             var noAnim = Transaction(); noAnim.disablesAnimations = true
+            // The style is read once per open: the canvas is sized for it and stays that size until
+            // the panel closes (Set Date never resizes the window).
+            openStyle = SetDateStyle.current
             withTransaction(noAnim) {
-                state.canvasSize = NotchLayout.canvasSize(for: state.openSize)
-                if state.schedule != .none { state.schedule = .none }   // every open starts plain
+                state.canvasSize = openCanvasSize
+                if state.section != .none { state.section = .none }   // every open starts plain
             }
             window.setFrame(windowFrame(for: screen), display: false)
             if state.isOpen { state.isOpen = false }
@@ -143,12 +153,18 @@ final class PanelController {
             var noAnim = Transaction(); noAnim.disablesAnimations = true
             withTransaction(noAnim) { state.canvasSize = openCanvasSize }
             window?.setFrame(windowFrame(for: screen), display: true)
+            // The shape moved under a pointer that may not move again before the next click.
+            updatePointerPassThrough()
 
         case .makeKeyAndOrderFront:
             guard let screen else { return }
             let window = ensureWindow(on: screen)
             window.sharingType = .readOnly   // the open panel may appear in screenshots / sharing
             window.makeKeyAndOrderFront(nil)
+            // Key first, then let the transparent canvas pass the mouse through: a window that
+            // already ignores the mouse when it is made key could miss the keyboard (keystrokes
+            // then reached the app below in an E2E run).
+            updatePointerPassThrough()
 
         case .park:
             if let screen { parkClosed(on: screen) }
@@ -161,6 +177,7 @@ final class PanelController {
         case .setIgnoresMouse(let ignores):
             // During the collapse / saved hold no input is needed; clicks reach what is below.
             window?.ignoresMouseEvents = ignores
+            // The open pass-through is decided only after the window is key (.makeKeyAndOrderFront).
 
         case .resignFirstResponder:
             window?.makeFirstResponder(nil)
@@ -168,9 +185,11 @@ final class PanelController {
         // Monitors & notifications
         case .installLocalMonitor:
             installLocalEventMonitor()
+            installPointerTracking()
 
         case .removeLocalMonitor:
             removeLocalEventMonitor()
+            removePointerTracking()
 
         case .postWillShow:
             NotificationCenter.default.post(name: .panelWillShow, object: nil)
@@ -197,7 +216,7 @@ final class PanelController {
             withAnimation(NotchLayout.effectiveClose) {
                 if state.isOpen { state.isOpen = false }
                 if state.isSaving { state.isSaving = false }
-                if state.schedule != .none { state.schedule = .none }
+                if state.section != .none { state.section = .none }
             }
 
         case .animateSaving:
@@ -205,7 +224,7 @@ final class PanelController {
             withAnimation(NotchLayout.savingAnimation) {
                 state.isOpen = false
                 state.isSaving = true
-                state.schedule = .none
+                state.section = .none
                 state.savedBadgeShown = true   // same transaction as the button's removal → the ✓ flies
             }
 
@@ -217,6 +236,7 @@ final class PanelController {
 
         case .setSettled(let settled):
             state.isSettled = settled
+            if settled { updatePointerPassThrough() }
 
         case .swellHover:
             withAnimation(NotchLayout.hoverInAnimation) { state.isHovering = true }
@@ -227,15 +247,10 @@ final class PanelController {
         case .haptic:
             NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
 
-        case .animateSchedule(let expansion):
-            withAnimation(NotchLayout.effectiveSchedule) { state.schedule = expansion }
-
-        case .growCanvasForSchedule, .fitCanvasToPanel:
-            // Top-anchored and centred like the open canvas, so the visible blob does not move.
-            guard let screen = screen ?? targetScreen(), let window else { return }
-            var noAnim = Transaction(); noAnim.disablesAnimations = true
-            withTransaction(noAnim) { state.canvasSize = openCanvasSize }
-            window.setFrame(windowFrame(for: screen), display: true)
+        case .animateSection(let expansion):
+            withAnimation(NotchLayout.effectiveSection) { state.section = expansion }
+            // The blob is about to grow / shrink under a resting pointer: decide from its target.
+            updatePointerPassThrough()
 
         // Timers
         case .scheduleClose:
@@ -305,7 +320,7 @@ final class PanelController {
     /// field gets it unless a text row still owns it.
     func restoreKeyFocus() {
         guard machine.isVisible, !state.isSaving, let window else { return }
-        window.makeKey()
+        makeKeyKeepingPassThrough(window)
         focusTitleFieldIfNeeded()
     }
 
@@ -313,14 +328,15 @@ final class PanelController {
     /// unless the user is already editing something.
     private func focusTitleFieldIfNeeded() {
         guard machine.isVisible, !state.isSaving, let window, let hostingView else { return }
-        // In-notch Set Date owns the keyboard while it is shown (its fields, the grid); the
-        // open-time retries must not pull it back to the title (⌘D right after the hotkey).
-        if state.schedule != .none { return }
+        // An in-notch section (Set Date, Location) owns the keyboard while it is shown (its fields,
+        // the grid); the open-time retries must not pull it back to the title (⌘D right after the
+        // hotkey).
+        if state.section != .none { return }
         // The title / notes rows are real text views. A field editor belongs to a SwiftUI
-        // TextField (the in-notch Set Date fields) that may just have left the hierarchy and
+        // TextField (the in-notch sections' fields) that may just have left the hierarchy and
         // still holds first responder, so it does not count as "the user is editing".
         if let editing = window.firstResponder as? NSTextView, !editing.isFieldEditor { return }
-        window.makeKey()
+        makeKeyKeepingPassThrough(window)
         if let field = Self.titleTextView(in: hostingView) {
             window.makeFirstResponder(field)
         }
@@ -374,10 +390,12 @@ final class PanelController {
         if state.openSize != open { state.openSize = open }
         // The grown states stop short of the Dock / screen bottom; the section scrolls instead.
         let maxHeight = NotchLayout.maxPanelHeight(screenFrame: screen.frame, visibleFrame: screen.visibleFrame)
-        let schedule = NotchLayout.openSize(notchBandHeight: band, schedule: .controls, maxHeight: maxHeight)
-        if state.scheduleSize != schedule { state.scheduleSize = schedule }
-        let calendar = NotchLayout.openSize(notchBandHeight: band, schedule: .calendar, maxHeight: maxHeight)
+        let controls = NotchLayout.openSize(notchBandHeight: band, section: .controls, maxHeight: maxHeight)
+        if state.scheduleSize != controls { state.scheduleSize = controls }
+        let calendar = NotchLayout.openSize(notchBandHeight: band, section: .calendar, maxHeight: maxHeight)
         if state.scheduleCalendarSize != calendar { state.scheduleCalendarSize = calendar }
+        let location = NotchLayout.openSize(notchBandHeight: band, section: .location, maxHeight: maxHeight)
+        if state.locationSize != location { state.locationSize = location }
     }
 
     /// Publishing unchanged values would re-render the whole panel for nothing.
@@ -385,9 +403,13 @@ final class PanelController {
         if state.closedSize != size { state.closedSize = size }
     }
 
-    /// The open canvas: the plain panel, or the tallest schedule state while the blob may grow.
+    /// Set Date style as of the current open (see `.switchToOpenCanvas`).
+    private var openStyle: SetDateStyle = .defaultStyle
+
+    /// The open canvas, constant from open to close (`NotchLayout.openCanvasSize`).
     private var openCanvasSize: CGSize {
-        NotchLayout.canvasSize(for: machine.canvasGrown ? state.scheduleCalendarSize : state.openSize)
+        NotchLayout.openCanvasSize(openSize: state.openSize, tallestSectionSize: state.tallestSectionSize,
+                                   style: openStyle)
     }
 
     /// Window covers the fully-open panel, anchored to the top edge, centred on the notch.
@@ -515,14 +537,13 @@ final class PanelController {
                     self.hide()
                     return nil
                 }
-                // In-notch Set Date: a click on the header / title / notes cancels scheduling (like a
-                // click outside the popover) and still lands where it was aimed.
+                // In-notch section (Set Date, Location): a click on the header / title / notes cancels
+                // it (like a click outside the popover) and still lands where it was aimed.
                 let topDown = hosting.isFlipped ? point.y : hosting.bounds.maxY - point.y
-                let sectionTop = NotchLayout.scheduleSectionTop(notchBandHeight: self.state.notchBandHeight,
-                                                                textScale: NotchLayout.cachedTextScale)
                 if event.type == .leftMouseDown,
-                   NotchLayout.clickCancelsSchedule(atY: topDown, sectionTop: sectionTop, schedule: self.state.schedule) {
-                    NotificationCenter.default.post(name: .panelCancelSchedule, object: nil)
+                   NotchLayout.clickCancelsSection(atY: topDown, notchBandHeight: self.state.notchBandHeight,
+                                                    textScale: NotchLayout.cachedTextScale, section: self.state.section) {
+                    NotificationCenter.default.post(name: .panelCancelSection, object: nil)
                 }
             }
             return event
@@ -534,6 +555,62 @@ final class PanelController {
             NSEvent.removeMonitor(localEventMonitor)
             self.localEventMonitor = nil
         }
+    }
+
+    /// Re-asserts key status (focus retries, a popover closing) with the mouse briefly taken back,
+    /// for the same reason as on open, then restores the pass-through.
+    private func makeKeyKeepingPassThrough(_ window: NSWindow) {
+        if window.ignoresMouseEvents { window.ignoresMouseEvents = false }
+        window.makeKey()
+        updatePointerPassThrough()
+    }
+
+    // MARK: - Pointer pass-through (open panel)
+
+    /// While open, the window is the full (in notch style tall) canvas but only the black shape
+    /// should take the mouse. Pointer moves over our window arrive at the local monitor, moves
+    /// anywhere else (including our transparent area while it ignores the mouse) at the global one;
+    /// either way `ignoresMouseEvents` follows the pointer, so a click below the panel reaches the
+    /// app there and the global click monitor closes the panel, as for any click outside.
+    private var pointerMonitors: [Any] = []
+
+    private func installPointerTracking() {
+        guard pointerMonitors.isEmpty else { return }
+        // Mouse-ups too: a drag out of the shape keeps the window until release (see below).
+        let events: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .leftMouseUp, .rightMouseUp]
+        if let local = NSEvent.addLocalMonitorForEvents(matching: events, handler: { [weak self] event in
+            self?.updatePointerPassThrough()
+            return event
+        }) { pointerMonitors.append(local) }
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: events, handler: { [weak self] _ in
+            if Thread.isMainThread {
+                MainActor.assumeIsolated { self?.updatePointerPassThrough() }
+            } else {
+                DispatchQueue.main.async { self?.updatePointerPassThrough() }
+            }
+        }) { pointerMonitors.append(global) }
+    }
+
+    private func removePointerTracking() {
+        pointerMonitors.forEach(NSEvent.removeMonitor)
+        pointerMonitors.removeAll()
+    }
+
+    /// Open phase only: the collapse / saved hold set `ignoresMouseEvents` themselves, and the
+    /// parked window takes the mouse for hover and click on the notch.
+    private func updatePointerPassThrough() {
+        guard machine.phase == .open, let window else { return }
+        let frame = window.frame
+        let point = NotchLayout.canvasPoint(mouse: NSEvent.mouseLocation, windowFrame: frame)
+        let target = NotchLayout.passesMouseThrough(point, canvasWidth: frame.width, panelSize: state.panelSize)
+        // Never mid-press (the mouse-up re-evaluates): NotchLayout.shouldIgnoreMouse.
+        let ignores = NotchLayout.shouldIgnoreMouse(target: target, current: window.ignoresMouseEvents,
+                                                    buttonsPressed: NSEvent.pressedMouseButtons != 0)
+        guard window.ignoresMouseEvents != ignores else { return }
+        window.ignoresMouseEvents = ignores
+        // Leaving the shape this way may not deliver a hover exit to the control under the edge;
+        // never leave its pointing-hand cursor behind over the app below.
+        if ignores { NSCursor.arrow.set() }
     }
 
     /// Hit-test against the silhouette as currently drawn (top-anchored, centred in the canvas).
@@ -565,8 +642,12 @@ extension Notification.Name {
     static let panelDidHide = Notification.Name("PanelDidHide")
     /// Esc while a popover (list picker, Set Date, location) is shown: close it, keep the panel.
     static let panelDismissPopovers = Notification.Name("PanelDismissPopovers")
-    /// A click on the panel above the in-notch Set Date section: cancel it (nothing written).
-    static let panelCancelSchedule = Notification.Name("PanelCancelSchedule")
-    /// ↩ / ⌘↩ in the title or notes while the in-notch section is open: Set, not save.
-    static let scheduleCommitRequested = Notification.Name("ScheduleCommitRequested")
+    /// A click on the panel above an in-notch section: cancel it (nothing written).
+    static let panelCancelSection = Notification.Name("PanelCancelSection")
+    /// ↩ / ⌘↩ in the title or notes while an in-notch section is open: its commit (Set / Done),
+    /// not a save.
+    static let sectionCommitRequested = Notification.Name("SectionCommitRequested")
+    /// ✓ while an in-notch section is open: it decides (apply its edit first or not), then the
+    /// reminder saves.
+    static let sectionSaveRequested = Notification.Name("SectionSaveRequested")
 }

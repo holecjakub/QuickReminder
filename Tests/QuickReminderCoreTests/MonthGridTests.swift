@@ -57,4 +57,14 @@ struct MonthGridTests {
         #expect(MonthGrid.isSelectable(prague(2026, 10, 23, 0), now: now, calendar: pragueCalendar))
         #expect(!MonthGrid.isSelectable(prague(2026, 10, 22, 23, 59), now: now, calendar: pragueCalendar))
     }
+
+    @Test func weekRowOfADay() {
+        // October 2026, Monday first: 1 Oct is in row 0, 24 Oct in row 3, 31 Oct in row 4.
+        var calendar = pragueCalendar
+        calendar.firstWeekday = 2
+        #expect(MonthGrid.week(of: prague(2026, 10, 1, 9), calendar: calendar) == 0)
+        #expect(MonthGrid.week(of: prague(2026, 10, 24, 9), calendar: calendar) == 3)
+        #expect(MonthGrid.week(of: prague(2026, 10, 31, 9), calendar: calendar) == 4)
+        #expect(MonthGrid.week(of: prague(2026, 3, 31, 9), calendar: calendar) == 5, "sixth row")
+    }
 }
