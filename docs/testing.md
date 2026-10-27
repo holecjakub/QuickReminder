@@ -49,6 +49,7 @@ Scripts/e2e.sh --keep          # leave the test instance running afterwards
 Scripts/e2e.sh --with-save     # also run save_choreography (creates a REAL
                                 # reminder in your Reminders app — off by
                                 # default, run deliberately)
+Scripts/e2e.sh --no-catcher    # run without the TextEdit key catcher (below)
 Scripts/e2e.sh --picker-style popover   # Set Date style for the test instance
                                 # (-datePickerStyle in the argument domain,
                                 # nothing persisted); default notch, always
@@ -81,8 +82,16 @@ letter lands in the title, which stays empty so nothing can be saved; the
 routing itself is unit-tested in `TextRowSubmitTests`),
 `schedule_notch_click_cancels` (a click inside the section keeps it; a click
 on the title row cancels, no date chip), `schedule_notch_time_return` (↩ in
-the time field applies the time and keeps the section open; ⌘↩ then Sets) —
-the four In-notch scenarios SKIP with `--picker-style popover` —, and (only with `--with-save`) `save_choreography`.
+the time field applies the time and keeps the section open; ⌘↩ then Sets),
+`schedule_notch_pill_toggles` (the calendar button opens Set Date below the
+bar, which stays with its ✓, and a second click closes it without a date),
+`schedule_notch_location` (the location button grows a short Location section
+below the bar, the ✓ stays, Esc closes only the section),
+`schedule_notch_section_switch` (⌘D → Set Date, the location button switches
+to the shorter Location, ⌘D switches back; Esc, Esc) — the seven In-notch
+scenarios SKIP with `--picker-style popover`; the section is
+appended below the plain panel, so `schedule_notch_expand` also checks that
+the ✓ is still there —, and (only with `--with-save`) `save_choreography`.
 
 **Pinned clock:** `QR_NOW=2026-10-23T10:00` (local time, or any ISO 8601
 timestamp) shifts the app's clock, read once at launch like `QR_TEXT_SCALE`;
@@ -141,6 +150,13 @@ region of the built-in display to `build/shots/<name>.png`. See the
 one of these directly.
 
 ## E2E: what to know before running it
+
+- **Key catcher (on by default).** Before the first scenario the runner opens a disposable,
+  never-saved TextEdit document and places it under and around the panel (bounds 250,60 –
+  1100,900), frontmost. Clicks the suite sends outside the panel — which the open panel passes
+  through to whatever is below it — and any keystroke that misses the panel land there instead
+  of in your apps. At the end the runner reads the document, closes it without saving, and a
+  non-empty text is reported as `LEAK: …` and counted as a failure. `--no-catcher` turns it off.
 
 - The runner **kills any running QuickReminder** (including a notarized copy from
   /Applications) and drives a fresh instance of `build/QuickReminder.app` launched with

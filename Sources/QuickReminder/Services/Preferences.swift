@@ -25,6 +25,11 @@ enum SetDateStyle: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
+    /// The stored style (`-datePickerStyle` in the argument domain overrides it for a run).
+    static var current: SetDateStyle {
+        UserDefaults.standard.string(forKey: defaultsKey).flatMap(SetDateStyle.init(rawValue:)) ?? defaultStyle
+    }
+
     var title: String {
         switch self {
         case .popover: return "Popover"

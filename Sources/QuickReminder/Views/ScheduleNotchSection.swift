@@ -8,10 +8,11 @@ import SwiftUI
 /// on ⌘K, Clear · Cancel · Set), restyled for pure black: white/grey text, white-alpha fills
 /// instead of glass, the list's accent for selection and Set (its label colour picked for
 /// contrast, `AccentContrast`), corners concentric with the panel (`ScheduleMetrics.controlRadius`).
-/// The panel grows to fit (`NotchLayout.scheduleContentHeight`, clamped to the screen); every row's
-/// height comes from `NotchLayout.ScheduleMetrics`.
+/// Appended below the plain panel's bottom bar, which stays exactly as it is: the blob only grows
+/// downward (`NotchLayout.scheduleContentHeight`, clamped to the screen, only these rows scroll);
+/// every row's height comes from `NotchLayout.ScheduleMetrics`.
 ///
-/// Shown while `NotchState.schedule != .none` (the one source of truth); `onClose` asks the panel
+/// Shown while `NotchState.section != .none` (the one source of truth); `onClose` asks the panel
 /// to settle back. Nothing reaches `selectedDate` until Set / ↩ / a preset / Clear.
 struct ScheduleNotchSection: View {
     @Binding var selectedDate: Date?
@@ -25,6 +26,12 @@ struct ScheduleNotchSection: View {
     let onToggleCalendar: () -> Void
     /// Cancel or any commit: the panel settles back to its plain height.
     let onClose: () -> Void
+    /// ✓ in the bottom bar while the section is open, once the section has decided
+    /// (`ScheduleDraft.prepareSave`): save the reminder.
+    let onSaveReminder: () -> Void
+    /// Switching to Location keeps what was done here (`ScheduleDraft.prepareSwitch`).
+    let handoff: SectionHandoff
+    @State private var handoffToken = UUID()
 
     private enum Field: Hashable { case text, time, calendar }
     private typealias M = NotchLayout.ScheduleMetrics
@@ -45,11 +52,14 @@ struct ScheduleNotchSection: View {
         return formatter
     }()
     private static let calendarID = "calendar"
+    private static let typeFieldID = "typeField"
+    private static let dayTimeID = "dayTime"
 
     /// - Parameter initialText: the title's live, undismissed date phrase, prefilled into the field.
     init(selectedDate: Binding<Date?>, presetPick: Binding<PresetPick?>, accent: Color, initialText: String?,
          onConsumeSuggestion: @escaping () -> Void, showsCalendar: Bool,
-         onToggleCalendar: @escaping () -> Void, onClose: @escaping () -> Void) {
+         onToggleCalendar: @escaping () -> Void, onClose: @escaping () -> Void,
+         onSaveReminder: @escaping () -> Void, handoff: SectionHandoff) {
         _selectedDate = selectedDate
         _presetPick = presetPick
         self.accent = accent
@@ -57,6 +67,8 @@ struct ScheduleNotchSection: View {
         self.showsCalendar = showsCalendar
         self.onToggleCalendar = onToggleCalendar
         self.onClose = onClose
+        self.onSaveReminder = onSaveReminder
+        self.handoff = handoff
         let model = ScheduleDraft(selected: selectedDate.wrappedValue, initialText: initialText)
         _model = State(initialValue: model)
         _calendarMonth = State(initialValue: MonthGrid.startOfMonth(model.draft))
@@ -71,6 +83,23 @@ struct ScheduleNotchSection: View {
                     rows
                 }
                 .scrollBounceBehavior(.basedOnSize)
+                // Clamped (large text, short screen): keep what has the keyboard in view — the
+                // picked day's week while the grid is focused, the field / time row on focus.
+                .onChange(of: model.draft) { _, draft in
+                    guard focus == .calendar, let week = MonthGrid.week(of: draft) else { return }
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+                        proxy.scrollTo(ScheduleMonthGrid.weekID(week), anchor: nil)
+                    }
+                }
+                .onChange(of: focus) { _, field in
+                    let id: String? = switch field {
+                    case .text: Self.typeFieldID
+                    case .time: Self.dayTimeID
+                    case .calendar, nil: nil
+                    }
+                    guard let id else { return }
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: nil) }
+                }
                 .onChange(of: showsCalendar) { _, shown in
                     if shown {
                         DispatchQueue.main.async {
@@ -91,9 +120,10 @@ struct ScheduleNotchSection: View {
                 .staggered(3, appeared: appeared, reduceMotion: reduceMotion)
         }
         .tint(accent)
-        .background(commandReturnTwin)
+        .background(CommandReturnTwin(action: commit))
         .background(calendarShortcut)
-        .onReceive(NotificationCenter.default.publisher(for: .scheduleCommitRequested)) { _ in commit() }
+        .onReceive(NotificationCenter.default.publisher(for: .sectionCommitRequested)) { _ in commit() }
+        .onReceive(NotificationCenter.default.publisher(for: .sectionSaveRequested)) { _ in saveFromBar() }
         .onChange(of: model.text) { _, _ in model.announceAfterPause { previewSpoken() } }
         .onChange(of: model.draft) { _, newDraft in
             if focus != .time { syncTimeText() }
@@ -107,9 +137,13 @@ struct ScheduleNotchSection: View {
         .onAppear {
             syncTimeText()
             appeared = true
+            handoff.register(handoffToken) { commitForSwitch() }
             DispatchQueue.main.async { focus = .text }
         }
-        .onDisappear { model.cancelAnnouncement() }
+        .onDisappear {
+            model.cancelAnnouncement()
+            handoff.unregister(handoffToken)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Set Date")
     }
@@ -118,7 +152,7 @@ struct ScheduleNotchSection: View {
     private var rows: some View {
         VStack(alignment: .leading, spacing: 0) {
             typeField
-                .padding(.top, M.topGap)
+                .id(Self.typeFieldID)
                 .staggered(0, appeared: appeared, reduceMotion: reduceMotion)
             previewLine
                 .padding(.top, M.previewGap)
@@ -127,6 +161,7 @@ struct ScheduleNotchSection: View {
                 .padding(.top, M.presetsGap)
                 .staggered(1, appeared: appeared, reduceMotion: reduceMotion)
             dayTimeRow
+                .id(Self.dayTimeID)
                 .padding(.top, M.dayTimeGap)
                 .staggered(2, appeared: appeared, reduceMotion: reduceMotion)
             if showsCalendar {
@@ -352,12 +387,17 @@ struct ScheduleNotchSection: View {
         timeText = Self.formatter.time(from: model.draft)
     }
 
-    private func applyTypedTime(beepOnInvalid: Bool) {
+    /// false when the field holds something that is not a time (it reverts; beeps if asked).
+    @discardableResult
+    private func applyTypedTime(beepOnInvalid: Bool) -> Bool {
         let typed = timeText.trimmingCharacters(in: .whitespaces)
-        if typed != Self.formatter.time(from: model.draft), !model.applyTypedTime(typed), beepOnInvalid {
-            NSSound.beep()
+        var valid = true
+        if typed != Self.formatter.time(from: model.draft), !model.applyTypedTime(typed) {
+            valid = false
+            if beepOnInvalid { NSSound.beep() }
         }
         syncTimeText()
+        return valid
     }
 
     private func timeChip(_ hour: Int) -> some View {
@@ -422,15 +462,6 @@ struct ScheduleNotchSection: View {
         .frame(height: Theme.s(M.footer))
     }
 
-    /// ⌘↩ is Set too (the bottom bar and its ⌘↩ save are not shown while the section is open).
-    private var commandReturnTwin: some View {
-        Button("", action: commit)
-            .keyboardShortcut(.return, modifiers: .command)
-            .opacity(0)
-            .frame(width: 0, height: 0)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-    }
 
     /// ⌘K toggles the month grid from anywhere in the section.
     private var calendarShortcut: some View {
@@ -447,10 +478,33 @@ struct ScheduleNotchSection: View {
     private func commit() {
         if focus == .time { applyTypedTime(beepOnInvalid: false) }
         guard let outcome = model.set() else {
-            if !model.committed { NSSound.beep() }   // not a date: stay open
+            if !model.committed {   // not a date: stay open
+                NSSound.beep()
+                AccessibilityNotification.Announcement("Not a date").post()
+            }
             return
         }
         finish(outcome)
+    }
+
+    /// ✓ while the section is open: see `ScheduleDraft.SaveDecision`.
+    private func saveFromBar() {
+        // An unreadable typed time must not be dropped silently on the way to saving.
+        if focus == .time, !applyTypedTime(beepOnInvalid: true) {
+            AccessibilityNotification.Announcement("Not a time. Nothing saved.").post()
+            return
+        }
+        switch model.prepareSave() {
+        case .saveAsIs:
+            onClose()
+            onSaveReminder()
+        case .commitThenSave(let outcome):
+            finish(outcome)
+            onSaveReminder()
+        case .invalid:
+            NSSound.beep()
+            AccessibilityNotification.Announcement("Not a date. Nothing saved.").post()
+        }
     }
 
     private func finish(_ outcome: ScheduleDraft.Outcome?) {
@@ -459,5 +513,32 @@ struct ScheduleNotchSection: View {
         presetPick = outcome.presetPick
         onClose()
         if outcome.consumesSuggestion { onConsumeSuggestion() }
+    }
+
+    /// Writes an outcome without closing (the panel is switching to Location instead).
+    private func write(_ outcome: ScheduleDraft.Outcome) {
+        selectedDate = outcome.date
+        presetPick = outcome.presetPick
+        if outcome.consumesSuggestion { onConsumeSuggestion() }
+    }
+
+    /// The panel is about to switch to Location: keep an edit (Set it), never lose it silently;
+    /// an invalid typed date / time beeps and blocks the switch.
+    private func commitForSwitch() -> Bool {
+        if focus == .time, !applyTypedTime(beepOnInvalid: true) {
+            AccessibilityNotification.Announcement("Not a time").post()
+            return false
+        }
+        switch model.prepareSwitch() {
+        case .saveAsIs:
+            return true
+        case .commitThenSave(let outcome):
+            write(outcome)
+            return true
+        case .invalid:
+            NSSound.beep()
+            AccessibilityNotification.Announcement("Not a date").post()
+            return false
+        }
     }
 }

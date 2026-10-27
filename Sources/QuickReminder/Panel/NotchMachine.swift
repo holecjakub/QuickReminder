@@ -20,19 +20,36 @@ enum NotchPhase: Hashable, Sendable {
     case closing
 }
 
-/// How far the open panel is grown for the in-notch Set Date variant (Settings → Date picker
-/// style → In notch): not at all, the scheduling controls, or the controls plus the month grid.
-enum ScheduleExpansion: Hashable, Sendable {
+/// What the open panel has grown for, in notch style: nothing, Set Date (its controls, or the
+/// controls plus the month grid) or Location. One section at a time: opening one while another is
+/// shown switches over in one spring. The machine only cares that it changed; the views and
+/// `NotchLayout.openSize(notchBandHeight:section:maxHeight:)` care which.
+enum NotchSection: Hashable, Sendable {
     case none
-    case controls
-    case calendar
+    case schedule(ScheduleDepth)
+    case location
+
+    enum ScheduleDepth: Hashable, Sendable {
+        case controls
+        case calendar
+    }
+
+    /// Shorthands for the two Set Date heights.
+    static let controls = NotchSection.schedule(.controls)
+    static let calendar = NotchSection.schedule(.calendar)
+
+    /// Set Date is shown (either depth).
+    var isSchedule: Bool {
+        if case .schedule = self { return true }
+        return false
+    }
 
     /// Esc steps back one level: the month grid closes first (the blob shrinks to the controls),
-    /// the next Esc closes the section; the panel stays open either way.
-    var afterEscape: ScheduleExpansion {
+    /// the next Esc closes the section (Set Date or Location); the panel stays open either way.
+    var afterEscape: NotchSection {
         switch self {
-        case .calendar: return .controls
-        case .controls, .none: return .none
+        case .schedule(.calendar): return .controls
+        case .schedule(.controls), .location, .none: return .none
         }
     }
 }
@@ -61,7 +78,7 @@ enum NotchEvent: Hashable, Sendable {
     /// Mouse-down on the closed silhouette (never reopens the saved pill).
     case notchTapped
     /// The in-notch Set Date section opened, closed or toggled its calendar (only while open).
-    case scheduleChanged(ScheduleExpansion)
+    case sectionChanged(NotchSection)
 }
 
 /// Outputs, performed by the controller in the order given.
@@ -98,13 +115,10 @@ enum NotchEffect: Hashable, Sendable {
     case swellHover
     case unswellHover
     case haptic
-    /// Spring the open blob to the given schedule height (the content cross-fades with it).
-    case animateSchedule(ScheduleExpansion)
-    /// Grow the window + canvas, without animation, to fit the tallest schedule state (top-anchored,
-    /// so nothing visible moves); done once per open, before the blob starts to grow.
-    case growCanvasForSchedule
-    /// Shrink the window + canvas back to the plain open panel once the blob has settled there.
-    case fitCanvasToPanel
+    /// Spring the open blob to the given schedule height. The window never resizes for this: in
+    /// notch style the open canvas is already sized for the tallest schedule state
+    /// (`NotchLayout.openCanvasSize`), so only SwiftUI state animates and nothing above moves.
+    case animateSection(NotchSection)
 
     // Timers
     case scheduleClose
@@ -132,9 +146,7 @@ struct NotchMachine: Hashable, Sendable {
     /// carries the current value.
     private(set) var generation: UInt = 0
     /// In-notch Set Date height of the open panel.
-    private(set) var schedule: ScheduleExpansion = .none
-    /// The window is sized for the tallest schedule state (until the blob settles back).
-    private(set) var canvasGrown = false
+    private(set) var section: NotchSection = .none
 
     /// Open or saving: the window is key and the local monitor is installed.
     var isVisible: Bool { phase == .open || phase == .saving }
@@ -164,7 +176,7 @@ struct NotchMachine: Hashable, Sendable {
             generation &+= 1
             phase = .saving
             badgeShown = true
-            schedule = .none   // the saved pill starts from whatever height the blob had
+            section = .none   // the saved pill starts from whatever height the blob had
             return [.setSettled(false), .animateSaving, .setIgnoresMouse(true), .resignFirstResponder, .scheduleSaveHold]
 
         case .saveHoldElapsed:
@@ -178,15 +190,11 @@ struct NotchMachine: Hashable, Sendable {
 
         case .settleTimerFired(let generation):
             guard phase == .open, generation == self.generation else { return [] }
-            if schedule == .none && canvasGrown {
-                canvasGrown = false
-                return [.setSettled(true), .fitCanvasToPanel]
-            }
             return [.setSettled(true)]
 
-        case .scheduleChanged(let expansion):
-            guard phase == .open, expansion != schedule else { return [] }
-            return changeSchedule(to: expansion)
+        case .sectionChanged(let expansion):
+            guard phase == .open, expansion != section else { return [] }
+            return changeSection(to: expansion)
 
         case .hoverEntered:
             guard phase == .closed(parked: true), hoverArmed, !hoverSwollen, !hoverDwellPending else { return [] }
@@ -239,19 +247,12 @@ struct NotchMachine: Hashable, Sendable {
 
     // MARK: - Transitions shared by several events
 
-    private mutating func changeSchedule(to expansion: ScheduleExpansion) -> [NotchEffect] {
-        schedule = expansion
+    private mutating func changeSection(to expansion: NotchSection) -> [NotchEffect] {
+        section = expansion
         generation &+= 1
         // The content mask goes back on while the blob springs: the section is laid out at its
         // final height at once and must never show outside the black.
-        var effects: [NotchEffect] = [.setSettled(false)]
-        if expansion != .none && !canvasGrown {
-            canvasGrown = true
-            effects.append(.growCanvasForSchedule)
-        }
-        effects.append(.animateSchedule(expansion))
-        effects.append(.scheduleSettle(generation: generation))
-        return effects
+        return [.setSettled(false), .animateSection(expansion), .scheduleSettle(generation: generation)]
     }
 
     private mutating func show() -> [NotchEffect] {
@@ -259,7 +260,7 @@ struct NotchMachine: Hashable, Sendable {
         // Raycast / Spotlight reopen) while Set Date is open in the notch returns to the plain
         // panel, through the same transition as Cancel, so NotchState and the view follow.
         guard phase != .open else {
-            return schedule == .none ? [] : changeSchedule(to: .none)
+            return section == .none ? [] : changeSection(to: .none)
         }
         var effects: [NotchEffect] = []
         if hoverDwellPending {
@@ -285,11 +286,8 @@ struct NotchMachine: Hashable, Sendable {
         badgeShown = false
         effects.append(.clearBadgeNoAnimation)
         effects.append(.configureGeometry)
-        if !midCollapse {
-            effects.append(.switchToOpenCanvas)
-            canvasGrown = false   // the open canvas is the plain panel again
-        }
-        schedule = .none
+        if !midCollapse { effects.append(.switchToOpenCanvas) }
+        section = .none
         effects.append(.setIgnoresMouse(false))
         effects.append(.makeKeyAndOrderFront)
         if !wasVisible { effects.append(.installLocalMonitor) }   // still installed during the saved hold
@@ -308,7 +306,7 @@ struct NotchMachine: Hashable, Sendable {
         var effects: [NotchEffect] = []
         if phase == .saving && cancellingHold { effects.append(.cancelSaveHold) }
         phase = .closing
-        schedule = .none   // the blob collapses from its current height; the section is gone
+        section = .none   // the blob collapses from its current height; the section is gone
         // resignFirstResponder: the panel stays key for the 0.36 s collapse; without it a Return
         // typed right after Esc would still reach the text view and save the dismissed draft.
         effects += [.postDidHide, .removeLocalMonitor, .resignFirstResponder, .setIgnoresMouse(true), .setSettled(false), .animateClose, .scheduleClose]
@@ -317,7 +315,6 @@ struct NotchMachine: Hashable, Sendable {
 
     private mutating func park(pointerOnNotch: Bool) -> NotchEffect {
         phase = .closed(parked: true)
-        canvasGrown = false    // the parked window is the small closed canvas
         hoverSwollen = false   // parking resets the swell without animation
         // Hover arms from where the pointer actually is: still on the notch → wait for it to
         // leave first; anywhere else → the next entry swells immediately.
@@ -327,7 +324,6 @@ struct NotchMachine: Hashable, Sendable {
 
     private mutating func orderOut() -> NotchEffect {
         phase = .closed(parked: false)
-        canvasGrown = false
         hoverSwollen = false   // nothing is on screen; the next park / open resets the swell anyway
         return .orderOut
     }

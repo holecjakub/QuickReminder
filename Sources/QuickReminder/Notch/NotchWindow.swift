@@ -21,6 +21,8 @@ final class NotchWindow: NSPanel {
         animationBehavior = .none
         hidesOnDeactivate = false
         titleVisibility = .hidden
+        // Pointer moves reach the local monitor that keeps the transparent canvas click-through.
+        acceptsMouseMovedEvents = true
     }
 
     override var canBecomeKey: Bool { true }
