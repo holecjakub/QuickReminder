@@ -5,7 +5,7 @@ import SwiftUI
 struct BottomBar: View {
     @Binding var dueDate: Date?
     @Binding var flagged: Bool
-    @Binding var locationText: String
+    @Binding var location: ReminderLocation
     let canSave: Bool
     let onSave: () -> Void
 
@@ -23,6 +23,8 @@ struct BottomBar: View {
     let locationOpen: Bool
     /// The location button in notch style: opens Location below the bar, or closes it again.
     let onToggleLocation: () -> Void
+    /// Lets the location popover's field take the first Esc while a suggestion is highlighted.
+    let handoff: SectionHandoff
     /// Which preset wrote the date (menu presets and the popover record it).
     @Binding var presetPick: PresetPick?
     /// The title's live, undismissed date phrase: prefilled into the Set Date popover.
@@ -171,7 +173,7 @@ struct BottomBar: View {
             // the glass popover stays the popover style's.
             if pickerStyle == .notch { onToggleLocation() } else { showLocationField = true }
         } label: {
-            icon(locationText.isEmpty ? "location" : "location.fill", active: !locationText.isEmpty || locationOpen)
+            icon(location.isEmpty ? "location" : "location.fill", active: !location.isEmpty || locationOpen)
                 .contentTransition(.symbolEffect(.replace))
                 .background(Circle().fill(accent.opacity(locationOpen ? 0.22 : 0)).padding(Theme.s(3)))
                 .animation(HoverMotion.highlightAnimation, value: locationOpen)
@@ -179,12 +181,12 @@ struct BottomBar: View {
         .buttonStyle(HoverHighlightButtonStyle())
         // The label names the location, the value carries only the open state (like the calendar
         // toggle's).
-        .accessibilityLabel(locationText.isEmpty ? "Add location" : "Location, \(locationText)")
+        .accessibilityLabel(locationLabel)
         .accessibilityValue(locationOpen ? "Location shown" : "")
         .accessibilityAddTraits(pickerStyle == .notch ? .isToggle : [])
         .accessibilityHint(pickerStyle == .notch ? (locationOpen ? "Hides Location" : "Shows Location below") : "")
         .popover(isPresented: $showLocationField, arrowEdge: .bottom) {
-            locationPopover
+            LocationPopover(location: $location, isPresented: $showLocationField, accent: accent, handoff: handoff)
         }
     }
 
@@ -232,20 +234,11 @@ struct BottomBar: View {
         }
     }
 
-    private var locationPopover: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Location").font(.headline)
-            TextField("Enter location", text: $locationText)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 220)
-                .onSubmit { showLocationField = false }
-            HStack {
-                Spacer()
-                Button("Done") { showLocationField = false }
-                    .buttonStyle(.borderedProminent)
-            }
-        }
-        .padding(14)
+    /// "Add location", "Location, Office", "Location, Café Slavia, when arriving" (a picked place).
+    private var locationLabel: String {
+        if location.isEmpty { return "Add location" }
+        if let place = location.place { return "Location, \(place.name), \(location.proximity.phrase)" }
+        return "Location, \(location.text)"
     }
 
     private var saveHelp: String {

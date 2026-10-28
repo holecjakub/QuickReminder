@@ -20,7 +20,7 @@ struct QuickReminderView: View {
     @State private var notes: String = ""
     @State private var dueDate: Date? = nil
     @State private var flagged: Bool = false
-    @State private var locationText: String = ""
+    @State private var location = ReminderLocation()
     @State private var showListPicker: Bool = false
     @State private var showLocationField: Bool = false
     /// The Set Date popover (Popover style only). The in-notch sections have no flags of their own:
@@ -101,7 +101,7 @@ struct QuickReminderView: View {
                 .notchSectionTransition()
             } else if locationInNotch {
                 LocationNotchSection(
-                    locationText: $locationText,
+                    location: $location,
                     accent: accent,
                     onClose: { PanelController.shared.setSection(.none) },
                     onSaveReminder: { saveReminder(afterSection: true) },
@@ -129,6 +129,8 @@ struct QuickReminderView: View {
         .onReceive(NotificationCenter.default.publisher(for: .panelDismissPopovers)) { _ in
             // One level per Esc: an open list / location popover first (the bottom bar is
             // reachable while Set Date is open), only then Set Date.
+            // A highlighted Apple Maps suggestion takes the first Esc (back to the field).
+            if (showLocationField || locationInNotch), handoff.handleEscape() { return }
             if showListPicker || showLocationField {
                 showListPicker = false
                 showLocationField = false
@@ -187,7 +189,7 @@ struct QuickReminderView: View {
             BottomBar(
                 dueDate: $dueDate,
                 flagged: $flagged,
-                locationText: $locationText,
+                location: $location,
                 canSave: canSave,
                 onSave: { saveReminder() },
                 showLocationField: $showLocationField,
@@ -197,6 +199,7 @@ struct QuickReminderView: View {
                 setDateOpen: schedulingInNotch,
                 locationOpen: locationInNotch,
                 onToggleLocation: toggleLocation,
+                handoff: handoff,
                 presetPick: $presetPick,
                 suggestionText: suggestion?.matchedText,
                 onConsumeSuggestion: stripSuggestionPhrase,
@@ -384,7 +387,7 @@ struct QuickReminderView: View {
                 calendarID: selectedListId.isEmpty ? nil : selectedListId,
                 dueDate: dueDate,
                 flagged: flagged,
-                location: locationText.isEmpty ? nil : locationText
+                location: location.isEmpty ? nil : location
             )
             PanelController.shared.collapseAfterSave()
         } catch {
@@ -403,7 +406,7 @@ struct QuickReminderView: View {
         notes = ""
         dueDate = nil
         flagged = false
-        locationText = ""
+        location = ReminderLocation()
         saveErrorText = nil
         suggestion = nil
         dismissedSuggestionText = nil

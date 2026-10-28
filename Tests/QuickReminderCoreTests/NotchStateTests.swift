@@ -269,26 +269,31 @@ struct NotchStateTests {
 
     // MARK: - Location section
 
-    /// The plain panel stays and the short Location section (field 36 + 14 + footer 36) is appended.
+    /// The plain panel stays and the Location section (field 36 + 6 + five 34 pt suggestion rows,
+    /// always reserved + 14 + footer 36) is appended.
     @Test func locationHeightFollowsTheRhythm() {
         for scale in [0.85, 1.0, 1.3, 1.6] as [CGFloat] {
             func sc(_ v: CGFloat) -> CGFloat { (v * scale).rounded(.toNearestOrEven) }
-            let section = sc(36) + 14 + sc(36)
+            let section = sc(36) + 6 + 5 * sc(34) + 14 + sc(36)
+            #expect(NotchLayout.LocationMetrics.listHeight(textScale: scale) == 5 * sc(34), "list at \(scale)")
             #expect(NotchLayout.LocationMetrics.sectionHeight(textScale: scale) == section, "section at \(scale)")
             #expect(NotchLayout.locationContentHeight(textScale: scale)
                     == NotchLayout.contentHeight(textScale: scale) + section + Theme.horizontalPadding, "content at \(scale)")
         }
-        #expect(NotchLayout.LocationMetrics.sectionHeight(textScale: 1) == 86)
-        #expect(abs(NotchLayout.locationContentHeight(textScale: 1) - 308) < 0.01, "202 plain + 86 + 20")
+        #expect(NotchLayout.LocationMetrics.rows == PlaceSearchModel.maxRows, "room for every row the model shows")
+        #expect(NotchLayout.LocationMetrics.sectionHeight(textScale: 1) == 262)
+        #expect(abs(NotchLayout.locationContentHeight(textScale: 1) - 484) < 0.01, "202 plain + 262 + 20")
     }
 
     @Test func locationSizeAndPrecedence() {
         let band = NotchLayout.defaultNotchBandHeight
         let plain = NotchLayout.openSize(notchBandHeight: band)
         let location = NotchLayout.openSize(notchBandHeight: band, section: .location)
-        let controls = NotchLayout.openSize(notchBandHeight: band, section: .controls)
+        let calendar = NotchLayout.openSize(notchBandHeight: band, section: .calendar)
         #expect(location.width == plain.width)
-        #expect(plain.height < location.height && location.height < controls.height, "Location is the shortest section")
+        #expect(location.height == 523, "39 band + 484")
+        #expect(plain.height < location.height && location.height < calendar.height,
+                "the calendar stays the tallest state, so the canvas never resizes for Location")
         #expect(NotchLayout.openSize(notchBandHeight: band, section: .location, maxHeight: plain.height + 10).height == plain.height + 10,
                 "clamped like Set Date")
 
