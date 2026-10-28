@@ -78,7 +78,11 @@ struct ReminderFillTests {
         RemindersService.fill(r, notes: "Bring cake", dueDate: due, location: picked(.arriving),
                               timeZone: prague, calendar: calendar)
         #expect(r.notes == "Bring cake", "no 📍 line for a picked place")
-        #expect(r.dueDateComponents?.timeZone == prague)
+        let comps = try #require(r.dueDateComponents)
+        #expect(comps.timeZone == prague)
+        #expect([comps.year, comps.month, comps.day, comps.hour, comps.minute] == [2026, 10, 26, 8, 33],
+                "local Prague wall time, to the minute")
+        #expect(comps.second == nil)
         #expect(r.alarms.count == 2)
         let time = try #require(r.alarms.first { $0.structuredLocation == nil })
         #expect(time.absoluteDate == due)

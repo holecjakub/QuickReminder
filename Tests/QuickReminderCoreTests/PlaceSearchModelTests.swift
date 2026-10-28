@@ -108,6 +108,52 @@ struct PlaceSearchModelTests {
         #expect(model.suggestions.map(\.title) == ["Café Slavia"])
     }
 
+    /// Apple Maps refines the same query (fresh ids): the highlight stays on the row the user saw,
+    /// and nothing is re-announced while the count is the same.
+    @Test func refinementKeepsTheHighlightAndStaysQuiet() async {
+        let model = makeModel()
+        await type("Café", into: model)
+        fake.send("Café", ["A", "B", "C"])
+        model.moveHighlight(by: 1)
+        model.moveHighlight(by: 1)
+        #expect(model.highlightedSuggestion?.title == "B")
+        let spokenBefore = spoken.lines.count
+        fake.onUpdate?(.results(query: "Café", ["B", "A", "C"].enumerated().map {
+            PlaceSuggestion(id: 10 + $0.offset, title: $0.element, subtitle: "Praha")
+        }))
+        #expect(model.highlighted == 0)
+        #expect(model.highlightedSuggestion?.title == "B", "↩ still picks the row that was highlighted")
+        #expect(spoken.lines.count == spokenBefore, "same query, same count: quiet")
+        // The highlighted row is gone: the highlight goes; a new count is spoken, without the hint.
+        fake.send("Café", ["A", "C"])
+        #expect(model.highlighted == nil)
+        #expect(spoken.lines.last == "2 places found.")
+    }
+
+    /// The first Esc with a row highlighted only returns to the field (combobox style).
+    @Test func escapeClearsTheHighlightFirst() async {
+        let model = makeModel()
+        #expect(!model.clearHighlight(), "nothing highlighted: the Esc closes as usual")
+        await type("Café", into: model)
+        fake.send("Café", ["A", "B"])
+        model.moveHighlight(by: 1)
+        #expect(model.clearHighlight())
+        #expect(model.highlighted == nil)
+        #expect(spoken.lines.last == "Location field")
+        #expect(!model.clearHighlight())
+    }
+
+    @Test func aFailureIsAnnouncedOncePerQuery() async {
+        let model = makeModel()
+        await type("Café", into: model)
+        fake.onUpdate?(.failed(query: "Café"))
+        fake.onUpdate?(.failed(query: "Café"))
+        #expect(spoken.lines.filter { $0 == PlaceSearchModel.failedAnnouncement }.count == 1)
+        await type("Café S", into: model)
+        fake.onUpdate?(.failed(query: "Café S"))
+        #expect(spoken.lines.filter { $0 == PlaceSearchModel.failedAnnouncement }.count == 2)
+    }
+
     @Test func emptyAndFailedStates() async {
         let model = makeModel()
         await type("zzzz", into: model)
@@ -132,15 +178,35 @@ struct PlaceSearchModelTests {
         #expect(fake.cancels >= 1)
     }
 
-    /// Closing the section mid-debounce: the query is never sent.
+    /// Closing the section mid-debounce: the pending query is cancelled and never sent, and the
+    /// list falls back to the hint.
     @Test func cancelDropsAPendingQuery() async {
         let fake = fake
+        // Cancellation-aware: only a cancelled debounce ends early.
         let model = PlaceSearchModel(makeService: { fake }, debounce: .zero,
                                      sleep: { _ in try await Task.sleep(for: .seconds(60)) }, announce: { _ in })
         model.textChanged("Café", pickedName: nil)
+        let pending = try? #require(model.debounceTask)
+        #expect(model.phase == .searching)
         model.cancel()
-        await model.debounceTask?.value
+        #expect(pending?.isCancelled == true, "the debounce is cancelled")
+        #expect(model.phase == .idle)
+        #expect(model.debounceTask == nil)
+        if pending?.isCancelled == true { await pending?.value }   // never waits out the 60 s
         #expect(fake.searched.isEmpty)
+    }
+
+    /// Reopening the field shows what is there without asking Apple Maps; the first edit searches.
+    @Test func openingDoesNotSearch() async {
+        let model = makeModel()
+        model.show("Office", pickedName: nil)
+        await model.debounceTask?.value
+        #expect(model.phase == .idle)
+        #expect(fake.searched.isEmpty)
+        model.show("Café Slavia", pickedName: "Café Slavia")
+        #expect(model.phase == .picked)
+        await type("Office 2", into: model)
+        #expect(fake.searched == ["Office 2"])
     }
 
     // MARK: Keyboard
@@ -229,6 +295,38 @@ struct PlaceSearchModelTests {
         #expect(model.phase == .searching)
     }
 
+    /// A row still on screen (dimmed) while a newer query runs can be picked.
+    @Test func aDimmedRowCanBePicked() async {
+        let model = makeModel()
+        await type("Caf", into: model)
+        fake.send("Caf", ["Café Slavia"])
+        await type("Café S", into: model)
+        #expect(model.phase == .searching)
+        #expect(fake.searched == ["Caf", "Café S"])
+        let outcome = await model.pick(model.suggestions[0])
+        #expect(outcome == .place(slavia))
+        #expect(model.phase == .picked)
+        // The newer query's late results do not reopen the list.
+        fake.send("Café S", ["Café Savoy"])
+        #expect(model.phase == .picked)
+        #expect(model.suggestions.isEmpty)
+    }
+
+    /// One pick at a time: a second one while the first is resolving is refused.
+    @Test func aSecondPickWhileResolvingReturnsNil() async {
+        fake.holdResolve = true
+        let model = makeModel()
+        await type("slav", into: model)
+        fake.send("slav", ["Café Slavia", "Slavia Praha"])
+        let first = model.suggestions[0], second = model.suggestions[1]
+        let pick = Task { await model.pick(first) }
+        while fake.pendingResolve == nil { await Task.yield() }
+        #expect(await model.pick(second) == nil)
+        #expect(model.resolvingID == first.id)
+        fake.pendingResolve?.resume(returning: slavia)
+        #expect(await pick.value == .place(slavia))
+    }
+
     @Test func onlyCurrentRowsCanBePicked() async {
         let model = makeModel()
         let stranger = PlaceSuggestion(id: 99, title: "X", subtitle: "")
@@ -239,5 +337,22 @@ struct PlaceSearchModelTests {
         #expect(PlaceSearchModel.rowLabel(PlaceSuggestion(id: 1, title: "Letná", subtitle: "")) == "Letná")
         #expect(PlaceSearchModel.rowLabel(PlaceSuggestion(id: 1, title: "Letná", subtitle: "Praha 7")) == "Letná, Praha 7")
         #expect(PlaceSearchModel.resultsAnnouncement(count: 1) == "1 place found. Down arrow to choose.")
+    }
+}
+
+/// The service's id → completion table: earlier rows stay resolvable until new results replace
+/// them (a dimmed row keeps working while the next query runs).
+struct SuggestionTableTests {
+    @Test func rowsStayResolvableUntilNewResults() {
+        var table = SuggestionTable<String>()
+        let first = table.publish([(title: "Café Slavia", subtitle: "Praha", handle: "slavia")])
+        #expect(first.map(\.title) == ["Café Slavia"])
+        // A new query was sent; no results yet: the old row still resolves.
+        #expect(table.handle(for: first[0]) == "slavia")
+        let second = table.publish([(title: "Café Savoy", subtitle: "Praha", handle: "savoy"),
+                                    (title: "Café Louvre", subtitle: "Praha", handle: "louvre")])
+        #expect(table.handle(for: first[0]) == nil, "pruned once newer results arrive")
+        #expect(second.map { table.handle(for: $0) } == ["savoy", "louvre"])
+        #expect(Set(second.map(\.id)).isDisjoint(with: first.map(\.id)), "fresh ids every time")
     }
 }

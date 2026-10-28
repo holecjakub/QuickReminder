@@ -57,14 +57,14 @@ struct LocationDraftTests {
         d.location.text = "  Holešovice, Praha \n"
         #expect(d.isDirty)
         #expect(d.committed.text == "  Holešovice, Praha \n")
-        #expect(d.saveDecision == .applyThenSave(d.committed))
+        #expect(d.saveDecision == .applyThenSave(ReminderLocation(text: "  Holešovice, Praha \n")))
         #expect(LocationSavePlan.plan(for: d.committed) == .noteLine("Holešovice, Praha"))
     }
 
     @Test func blankingTheFieldRemovesTheLocation() {
         var d = LocationDraft(original: ReminderLocation(text: "Office"))
         d.location.text = "   "
-        #expect(d.saveDecision == .applyThenSave(d.committed))
+        #expect(d.saveDecision == .applyThenSave(ReminderLocation(text: "   ")))
         #expect(LocationSavePlan.plan(for: d.committed) == .none)
     }
 
@@ -72,8 +72,10 @@ struct LocationDraftTests {
         var d = LocationDraft(original: ReminderLocation())
         d.location.pick(slavia)
         #expect(d.isDirty)
-        guard case .applyThenSave(let edited) = d.saveDecision else { Issue.record("expected an edit"); return }
-        #expect(edited.place == slavia)
+        var expected = ReminderLocation()
+        expected.pick(slavia)
+        #expect(d.saveDecision == .applyThenSave(expected))
+        #expect(expected.place == slavia && expected.text == "Café Slavia")
     }
 
     /// Changing only Arriving / Leaving is an edit too (✓ and a switch keep it).
