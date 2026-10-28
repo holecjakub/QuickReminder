@@ -23,6 +23,8 @@ struct BottomBar: View {
     let locationOpen: Bool
     /// The location button in notch style: opens Location below the bar, or closes it again.
     let onToggleLocation: () -> Void
+    /// Lets the location popover's field take the first Esc while a suggestion is highlighted.
+    let handoff: SectionHandoff
     /// Which preset wrote the date (menu presets and the popover record it).
     @Binding var presetPick: PresetPick?
     /// The title's live, undismissed date phrase: prefilled into the Set Date popover.
@@ -184,7 +186,7 @@ struct BottomBar: View {
         .accessibilityAddTraits(pickerStyle == .notch ? .isToggle : [])
         .accessibilityHint(pickerStyle == .notch ? (locationOpen ? "Hides Location" : "Shows Location below") : "")
         .popover(isPresented: $showLocationField, arrowEdge: .bottom) {
-            LocationPopover(location: $location, isPresented: $showLocationField, accent: accent)
+            LocationPopover(location: $location, isPresented: $showLocationField, accent: accent, handoff: handoff)
         }
     }
 

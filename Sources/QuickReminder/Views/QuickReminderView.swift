@@ -129,6 +129,8 @@ struct QuickReminderView: View {
         .onReceive(NotificationCenter.default.publisher(for: .panelDismissPopovers)) { _ in
             // One level per Esc: an open list / location popover first (the bottom bar is
             // reachable while Set Date is open), only then Set Date.
+            // A highlighted Apple Maps suggestion takes the first Esc (back to the field).
+            if (showLocationField || locationInNotch), handoff.handleEscape() { return }
             if showListPicker || showLocationField {
                 showListPicker = false
                 showLocationField = false
@@ -197,6 +199,7 @@ struct QuickReminderView: View {
                 setDateOpen: schedulingInNotch,
                 locationOpen: locationInNotch,
                 onToggleLocation: toggleLocation,
+                handoff: handoff,
                 presetPick: $presetPick,
                 suggestionText: suggestion?.matchedText,
                 onConsumeSuggestion: stripSuggestionPhrase,

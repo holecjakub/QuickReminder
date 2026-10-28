@@ -10,9 +10,8 @@ final class MapsPlaceSearch: NSObject, PlaceSearchService, MKLocalSearchComplete
     var onUpdate: ((PlaceSearchUpdate) -> Void)?
 
     private let completer = MKLocalSearchCompleter()
-    /// The completions behind the rows reported for the current query, by row id.
-    private var completions: [Int: MKLocalSearchCompletion] = [:]
-    private var nextID = 0
+    /// The completions behind the rows last reported (kept until newer results replace them).
+    private var completions = SuggestionTable<MKLocalSearchCompletion>()
 
     enum SearchError: Error { case unknownSuggestion, notFound }
 
@@ -23,8 +22,7 @@ final class MapsPlaceSearch: NSObject, PlaceSearchService, MKLocalSearchComplete
     }
 
     func search(_ query: String) {
-        // Rows of an earlier query can no longer be picked; refinements of this one stay valid.
-        completions.removeAll(keepingCapacity: true)
+        // The rows on screen stay pickable until the new results replace them (`publishResults`).
         completer.queryFragment = query
     }
 
@@ -33,19 +31,12 @@ final class MapsPlaceSearch: NSObject, PlaceSearchService, MKLocalSearchComplete
     }
 
     func resolve(_ suggestion: PlaceSuggestion) async throws -> PickedPlace {
-        guard let completion = completions[suggestion.id] else { throw SearchError.unknownSuggestion }
+        guard let completion = completions.handle(for: suggestion) else { throw SearchError.unknownSuggestion }
         let search = MKLocalSearch(request: MKLocalSearch.Request(completion: completion))
-        // Not cancelled when it goes stale: the model drops a stale answer, and a cancelled search
-        // is not guaranteed to call back (the continuation must resume exactly once).
-        return try await withCheckedThrowingContinuation { continuation in
-            search.start { response, error in
-                if let item = response?.mapItems.first {
-                    continuation.resume(returning: Self.place(from: item, fallback: suggestion))
-                } else {
-                    continuation.resume(throwing: error ?? SearchError.notFound)
-                }
-            }
-        }
+        // Not cancelled when it goes stale: the model drops a stale answer.
+        let response = try await search.start()
+        guard let item = response.mapItems.first else { throw SearchError.notFound }
+        return Self.place(from: item, fallback: suggestion)
     }
 
     nonisolated private static func place(from item: MKMapItem, fallback: PlaceSuggestion) -> PickedPlace {
@@ -82,12 +73,9 @@ final class MapsPlaceSearch: NSObject, PlaceSearchService, MKLocalSearchComplete
     }
 
     private func publishResults() {
-        var rows: [PlaceSuggestion] = []
-        for completion in completer.results.prefix(PlaceSearchModel.maxRows) {
-            nextID += 1
-            completions[nextID] = completion
-            rows.append(PlaceSuggestion(id: nextID, title: completion.title, subtitle: completion.subtitle))
-        }
+        let rows = completions.publish(completer.results.prefix(PlaceSearchModel.maxRows).map {
+            (title: $0.title, subtitle: $0.subtitle, handle: $0)
+        })
         onUpdate?(.results(query: completer.queryFragment, rows))
     }
 }

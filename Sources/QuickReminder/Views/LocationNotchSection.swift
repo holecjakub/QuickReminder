@@ -69,12 +69,15 @@ struct LocationNotchSection: View {
                 if let kept = draft.locationToKeepOnSwitch { location = kept }
                 return true
             }
-            search.textChanged(draft.location.text, pickedName: draft.location.place?.name)
+            handoff.registerEscape(handoffToken) { search.clearHighlight() }
+            // Nothing is sent to Apple Maps until the text is edited.
+            search.show(draft.location.text, pickedName: draft.location.place?.name)
             DispatchQueue.main.async { fieldFocused = true }
         }
         .onDisappear {
             search.cancel()
             handoff.unregister(handoffToken)
+            handoff.unregisterEscape(handoffToken)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Location")

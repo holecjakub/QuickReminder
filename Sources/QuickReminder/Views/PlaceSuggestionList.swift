@@ -44,8 +44,6 @@ struct PlaceSuggestionList: View {
                 row(suggestion, highlighted: search.highlighted == index)
             }
         }
-        // Rows still on screen while a newer query runs are dimmed, not removed (no jump).
-        .opacity(search.phase == .searching ? 0.5 : 1)
         .accessibilityRepresentation {
             List(search.suggestions) { suggestion in
                 Button(PlaceSearchModel.rowLabel(suggestion)) { onPick(suggestion) }
@@ -66,13 +64,16 @@ struct PlaceSuggestionList: View {
                         Image(systemName: "mappin.circle.fill")
                             .font(.system(size: Theme.s(14)))
                             .foregroundStyle(highlighted ? accent : secondary)
+                            .opacity(dimmed ? 0.75 : 1)
                     }
                 }
                 .frame(width: Theme.s(18))
                 VStack(alignment: .leading, spacing: 1) {
+                    // Rows still on screen while a newer query runs are dimmed, not removed (no
+                    // jump), and stay pickable: only the title softens, so both lines keep 4.5:1.
                     Text(s.title)
                         .font(.system(size: Theme.s(13), weight: .medium))
-                        .foregroundStyle(primary)
+                        .foregroundStyle(primary.opacity(dimmed ? 0.75 : 1))
                     if !s.subtitle.isEmpty {
                         Text(s.subtitle)
                             .font(.system(size: Theme.s(11)))
@@ -98,6 +99,10 @@ struct PlaceSuggestionList: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // Arrows in the field move through the rows; with Full Keyboard Access they stay out of
+        // the Tab loop (like the month grid's days).
+        .focusable(false)
+        .help(PlaceSearchModel.rowLabel(s))
         .onHover { inside in
             if inside { hoveredID = s.id } else if hoveredID == s.id { hoveredID = nil }
             HoverMotion.updateCursor(hovering: inside)
@@ -117,7 +122,7 @@ struct PlaceSuggestionList: View {
                 Text(place.name)
                     .font(.system(size: Theme.s(13), weight: .medium))
                     .foregroundStyle(primary)
-                if let address = place.address, !address.isEmpty, address != place.name {
+                if let address = Self.shownAddress(place) {
                     Text(address)
                         .font(.system(size: Theme.s(11)))
                         .foregroundStyle(secondary)
@@ -133,8 +138,16 @@ struct PlaceSuggestionList: View {
         .padding(.horizontal, 10)
         .padding(.top, 8)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Picked place: \(place.name)\(place.address.map { ", \($0)" } ?? "")")
+        .accessibilityLabel("Picked place: \(place.name)\(Self.shownAddress(place).map { ", \($0)" } ?? "")")
         .accessibilityValue("Reminds you \(location.proximity.phrase)")
+        .help(Self.shownAddress(place).map { "\(place.name), \($0)" } ?? place.name)
+    }
+
+    /// The address line under a picked name: none when it is empty or just repeats the name.
+    static func shownAddress(_ place: PickedPlace) -> String? {
+        guard let address = place.address?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !address.isEmpty, address != place.name else { return nil }
+        return address
     }
 
     private func statusLine(_ text: String) -> some View {
@@ -150,6 +163,7 @@ struct PlaceSuggestionList: View {
 
     // MARK: Colours
 
+    private var dimmed: Bool { search.phase == .searching }
     private var primary: Color { style == .notch ? .white : .primary }
     /// At least 50 % white on black (secondary text that carries information, SPEC §1).
     private var secondary: Color { style == .notch ? .white.opacity(0.55) : .secondary }
@@ -179,13 +193,16 @@ struct ProximityPicker: View {
                 .buttonStyle(NotchFillButtonStyle(kind: selected ? .selected : .neutral, accent: accent, radius: nil))
                 .accessibilityLabel("When \(option.rawValue)")
                 .accessibilityAddTraits(selected ? .isSelected : [])
+                .accessibilityHint(enabledLook ? "" : Self.notApplicableHint)
             }
         }
         .padding(2)
         .background(Capsule().fill(Color.white.opacity(0.04)))
-        .opacity(enabledLook ? 1 : 0.5)
+        // Dimmed, not disabled: unselected labels stay above 4.5:1 (70 % × 80 % white).
+        .opacity(enabledLook ? 1 : 0.8)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Remind me")
-        .accessibilityHint(enabledLook ? "" : "Applies once a place from Apple Maps is picked")
     }
+
+    static let notApplicableHint = "Applies once a place from Apple Maps is picked"
 }

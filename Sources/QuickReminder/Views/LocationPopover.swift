@@ -8,8 +8,10 @@ struct LocationPopover: View {
     @Binding var location: ReminderLocation
     @Binding var isPresented: Bool
     let accent: Color
+    let handoff: SectionHandoff
 
     @State private var search = PlaceSearchModel()
+    @State private var escapeToken = UUID()
     @FocusState private var fieldFocused: Bool
 
     private typealias M = NotchLayout.LocationMetrics
@@ -34,9 +36,9 @@ struct LocationPopover: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .fixedSize()
-                .opacity(location.place == nil ? 0.6 : 1)
+                .opacity(location.place == nil ? 0.8 : 1)
                 .accessibilityLabel("Remind me")
-                .accessibilityHint(location.place == nil ? "Applies once a place from Apple Maps is picked" : "")
+                .accessibilityHint(location.place == nil ? ProximityPicker.notApplicableHint : "")
                 Spacer()
                 Button("Done") { isPresented = false }
                     .buttonStyle(.borderedProminent)
@@ -46,11 +48,16 @@ struct LocationPopover: View {
         .padding(14)
         .onChange(of: location.text) { _, text in search.textChanged(text, pickedName: location.place?.name) }
         .onAppear {
-            search.textChanged(location.text, pickedName: location.place?.name)
+            // Nothing is sent to Apple Maps until the text is edited.
+            search.show(location.text, pickedName: location.place?.name)
+            handoff.registerEscape(escapeToken) { search.clearHighlight() }
             // One runloop later: the popover window is not key yet.
             DispatchQueue.main.async { fieldFocused = true }
         }
-        .onDisappear { search.cancel() }
+        .onDisappear {
+            search.cancel()
+            handoff.unregisterEscape(escapeToken)
+        }
     }
 
     private func submit() {

@@ -25,4 +25,25 @@ final class SectionHandoff {
 
     /// Keep the open section's edit; true = go ahead and switch.
     func commitForSwitch() -> Bool { commitBeforeSwitch?() ?? true }
+
+    // MARK: Esc
+
+    /// The Location field (section or popover) takes the first Esc while a suggestion row is
+    /// highlighted (it clears the highlight, combobox style); true = consumed.
+    private var escapeHandler: (() -> Bool)?
+    private var escapeOwner: UUID?
+
+    func registerEscape(_ owner: UUID, _ handler: @escaping () -> Bool) {
+        escapeOwner = owner
+        escapeHandler = handler
+    }
+
+    func unregisterEscape(_ owner: UUID) {
+        guard escapeOwner == owner else { return }
+        escapeOwner = nil
+        escapeHandler = nil
+    }
+
+    /// Offers an Esc to the registered field first; false = close as usual.
+    func handleEscape() -> Bool { escapeHandler?() ?? false }
 }

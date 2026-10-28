@@ -10,6 +10,25 @@ struct PlaceSuggestion: Identifiable, Equatable, Sendable {
     let subtitle: String
 }
 
+/// The service's id → completion table. A new query does not empty it: the previous rows stay on
+/// screen (dimmed) and pickable until the new results arrive, which then replace the table.
+struct SuggestionTable<Handle> {
+    private var handles: [Int: Handle] = [:]
+    private var nextID = 0
+
+    /// New rows for the current results; rows of earlier results can no longer be resolved.
+    mutating func publish(_ entries: [(title: String, subtitle: String, handle: Handle)]) -> [PlaceSuggestion] {
+        handles.removeAll(keepingCapacity: true)
+        return entries.map { entry in
+            nextID += 1
+            handles[nextID] = entry.handle
+            return PlaceSuggestion(id: nextID, title: entry.title, subtitle: entry.subtitle)
+        }
+    }
+
+    func handle(for suggestion: PlaceSuggestion) -> Handle? { handles[suggestion.id] }
+}
+
 /// What the search service reports for a query.
 enum PlaceSearchUpdate: Equatable, Sendable {
     case results(query: String, [PlaceSuggestion])
@@ -80,6 +99,13 @@ final class PlaceSearchModel {
     @ObservationIgnored private(set) var debounceTask: Task<Void, Never>?
     /// The title a failed pick left in the field: it is free text now, not a new query.
     @ObservationIgnored private var unresolvedText: String?
+    /// What was last announced for results (query, row count): refinements of the same query with
+    /// the same count stay quiet.
+    @ObservationIgnored private var lastResultsAnnouncement: (query: String, count: Int)?
+    /// The query whose failure was announced (once per query).
+    @ObservationIgnored private var failureAnnouncedFor: String?
+    /// "Down arrow to choose" is said once per field session, then only the count.
+    @ObservationIgnored private var toldHowToChoose = false
 
     /// The service is created on the first query, so building the model (a view's `@State`) costs
     /// nothing until someone types.
@@ -102,6 +128,17 @@ final class PlaceSearchModel {
     }
 
     // MARK: Typing
+
+    /// The field as it is when the section / popover opens: a picked place shows as picked, any
+    /// other text waits for an edit (reopening never re-sends text to Apple Maps by itself).
+    func show(_ text: String, pickedName: String?) {
+        generation += 1
+        debounceTask?.cancel()
+        debounceTask = nil
+        resolvingID = nil
+        setHighlight(nil, announce: false)
+        stopSearching(phase: pickedName != nil && pickedName == text ? .picked : .idle)
+    }
 
     /// The field changed (also when a pick wrote the place's name: `pickedName` is the location's
     /// picked place, if any).
@@ -165,17 +202,28 @@ final class PlaceSearchModel {
         case .results(let q, let items):
             guard q == query else { return }
             let rows = Array(items.prefix(Self.maxRows))
-            // Refinements of the same query come with fresh ids: compare what is shown.
-            let changed = rows.map(Self.rowLabel) != suggestions.map(Self.rowLabel)
-                || phase != (rows.isEmpty ? .empty : .results)
+            // Refinements of the same query come with fresh ids: the highlight follows the row the
+            // user saw (same label), so ↩ still picks it; it is dropped only when that row is gone.
+            let highlightedLabel = highlightedSuggestion.map(Self.rowLabel)
             suggestions = rows
             phase = rows.isEmpty ? .empty : .results
-            if changed { setHighlight(nil, announce: false); announce(Self.resultsAnnouncement(count: rows.count)) }
+            setHighlight(highlightedLabel.flatMap { label in rows.firstIndex { Self.rowLabel($0) == label } },
+                         announce: false)
+            // Spoken only when the query or the count changed, not for every refinement.
+            if lastResultsAnnouncement?.query != q || lastResultsAnnouncement?.count != rows.count {
+                lastResultsAnnouncement = (q, rows.count)
+                announce(Self.resultsAnnouncement(count: rows.count, withHint: !toldHowToChoose))
+                if !rows.isEmpty { toldHowToChoose = true }
+            }
         case .failed(let q):
             guard q == query else { return }
             suggestions = []
             phase = .failed
             setHighlight(nil, announce: false)
+            if failureAnnouncedFor != q {
+                failureAnnouncedFor = q
+                announce(Self.failedAnnouncement)
+            }
         }
     }
 
@@ -195,6 +243,15 @@ final class PlaceSearchModel {
         }
         if next == nil && highlighted == nil { return false }
         setHighlight(next, announce: true)
+        return true
+    }
+
+    /// Esc with a row highlighted (combobox style): back to the field, the section stays open.
+    /// false = nothing was highlighted; the Esc closes the section / popover as usual.
+    @discardableResult
+    func clearHighlight() -> Bool {
+        guard highlighted != nil else { return false }
+        setHighlight(nil, announce: true)
         return true
     }
 
@@ -253,13 +310,16 @@ final class PlaceSearchModel {
 
     // MARK: VoiceOver
 
-    static func resultsAnnouncement(count: Int) -> String {
+    static func resultsAnnouncement(count: Int, withHint: Bool = true) -> String {
+        let hint = withHint ? " Down arrow to choose." : ""
         switch count {
-        case 0: "No places found"
-        case 1: "1 place found. Down arrow to choose."
-        default: "\(count) places found. Down arrow to choose."
+        case 0: return "No places found"
+        case 1: return "1 place found.\(hint)"
+        default: return "\(count) places found.\(hint)"
         }
     }
+
+    static let failedAnnouncement = "Apple Maps is unavailable. Done keeps the text as a note."
 
     static func highlightAnnouncement(_ s: PlaceSuggestion, position: Int, of count: Int) -> String {
         let name = s.subtitle.isEmpty ? s.title : "\(s.title), \(s.subtitle)"
