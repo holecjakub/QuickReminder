@@ -10,7 +10,7 @@ State-machine and pure-logic coverage: `NotchMachineTests`, `NotchStateTests`,
 `ScheduleInputTests`, `ScheduleCommitTests`, `ScheduleOpeningTests`, `PresetDetailTests`, `PopUpMenuTests`,
 `NotchMachineScheduleTests`, `MonthGridTests`, `SetDateStyleTests`, `TextRowSubmitTests`,
 `ScheduleDraftTests`, `AccentContrastTests`, `ReminderLocationTests`, `LocationDraftTests`,
-`LocationSavePlanTests`, `ReminderFillTests`, `PlaceSearchModelTests` (see `Tests/QuickReminderCoreTests/`).
+`LocationSavePlanTests`, `ReminderFillTests`, `PlaceSearchModelTests`, `SuggestionTableTests` (see `Tests/QuickReminderCoreTests/`).
 Apple Maps and EventKit stay behind small protocols (`PlaceSearchService`,
 `ReminderAlarmTarget`), so the place search and the save mapping run against fakes:
 no network, no event store, no reminders created.
