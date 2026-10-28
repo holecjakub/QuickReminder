@@ -4,6 +4,8 @@ All notable changes to QuickReminder. Format: [Keep a Changelog](https://keepach
 
 ## Unreleased
 
+## 0.6.0
+
 - **Places from Apple Maps.** Typing in the Location field (in the notch and in the popover) now suggests places from Apple Maps, up to five, right under the field. Use ↑ / ↓ and ↩, or click one, to pick it. Typing without picking still works as before.
 - **Real Reminders locations.** A picked place is saved as the reminder's location in Reminders, with an alert when you arrive there or when you leave (new Arriving / Leaving choice in the Location section, Arriving by default), like Reminders' own “When arriving / When leaving”. It no longer adds a 📍 line to Notes. Text you typed without picking a place is still kept in Notes as 📍 …. A due date keeps its own time alert next to the location alert. No location permission or account needed.
 - The in-notch Location section is taller now: it keeps room for the suggestions, so the panel does not jump while you type.
