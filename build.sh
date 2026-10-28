@@ -83,6 +83,8 @@ set +e
     -framework SwiftUI \
     -framework EventKit \
     -framework Carbon \
+    -framework MapKit \
+    -framework CoreLocation \
     -framework ServiceManagement \
     -o "$EXECUTABLE" \
     "${SWIFT_FILES[@]}"

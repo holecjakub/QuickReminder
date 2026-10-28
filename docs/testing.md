@@ -9,7 +9,11 @@ State-machine and pure-logic coverage: `NotchMachineTests`, `NotchStateTests`,
 `HotkeyShortcutTests`, `ScheduleDefaultsTests`, `DatePresetsTests`,
 `ScheduleInputTests`, `ScheduleCommitTests`, `ScheduleOpeningTests`, `PresetDetailTests`, `PopUpMenuTests`,
 `NotchMachineScheduleTests`, `MonthGridTests`, `SetDateStyleTests`, `TextRowSubmitTests`,
-`ScheduleDraftTests`, `AccentContrastTests` (see `Tests/QuickReminderCoreTests/`).
+`ScheduleDraftTests`, `AccentContrastTests`, `ReminderLocationTests`, `LocationDraftTests`,
+`LocationSavePlanTests`, `ReminderFillTests`, `PlaceSearchModelTests`, `SuggestionTableTests` (see `Tests/QuickReminderCoreTests/`).
+Apple Maps and EventKit stay behind small protocols (`PlaceSearchService`,
+`ReminderAlarmTarget`), so the place search and the save mapping run against fakes:
+no network, no event store, no reminders created.
 The scheduling tests pin `now` and inject a Europe/Prague calendar (real DST
 days) and cs_CZ / en_US locales. These run
 headless, no app window, no Accessibility permission, and are what CI runs on
@@ -85,10 +89,12 @@ on the title row cancels, no date chip), `schedule_notch_time_return` (↩ in
 the time field applies the time and keeps the section open; ⌘↩ then Sets),
 `schedule_notch_pill_toggles` (the calendar button opens Set Date below the
 bar, which stays with its ✓, and a second click closes it without a date),
-`schedule_notch_location` (the location button grows a short Location section
-below the bar, the ✓ stays, Esc closes only the section),
+`schedule_notch_location` (the location button grows the Location section
+below the bar — with room reserved for the Apple Maps suggestions, but short of
+the Set Date calendar — the ✓ stays, Esc closes only the section),
 `schedule_notch_section_switch` (⌘D → Set Date, the location button switches
-to the shorter Location, ⌘D switches back; Esc, Esc) — the seven In-notch
+to Location, ⌘D switches back; Esc, Esc — the two are about as tall now, so
+this checks the panel stays grown and open, not which section shows) — the seven In-notch
 scenarios SKIP with `--picker-style popover`; the section is
 appended below the plain panel, so `schedule_notch_expand` also checks that
 the ✓ is still there —, and (only with `--with-save`) `save_choreography`.
@@ -174,4 +180,6 @@ one of these directly.
   needs Screen Recording permission for your terminal.
 - Coordinates are calibrated for a 14" MacBook Pro (1800 × 1169 pt, notch at x ≈ 901);
   other notched Macs need the constants in `Scripts/e2e/lib.sh` adjusted.
+- No scenario types into the Location field or picks an Apple Maps place (the suggestions need
+  the network and vary); check the place search and a saved location by hand (see SPEC §1).
 - The suggestion-chip checks detect the chip by colour saturation, so they FAIL (safely) when the selected list has a grey, brown or very dark colour; pick a coloured list before running.

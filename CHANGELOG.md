@@ -4,6 +4,14 @@ All notable changes to QuickReminder. Format: [Keep a Changelog](https://keepach
 
 ## Unreleased
 
+## 0.6.0
+
+- **Places from Apple Maps.** Typing in the Location field (in the notch and in the popover) now suggests places from Apple Maps, up to five, right under the field. Use ↑ / ↓ and ↩, or click one, to pick it. Typing without picking still works as before.
+- **Real Reminders locations.** A picked place is saved as the reminder's location in Reminders, with an alert when you arrive there or when you leave (new Arriving / Leaving choice in the Location section, Arriving by default), like Reminders' own “When arriving / When leaving”. It no longer adds a 📍 line to Notes. Text you typed without picking a place is still kept in Notes as 📍 …. A due date keeps its own time alert next to the location alert. No location permission or account needed.
+- The in-notch Location section is taller now: it keeps room for the suggestions, so the panel does not jump while you type.
+- With a suggestion highlighted, Esc goes back to the field first; the next Esc closes Location. The highlight stays on the same place when Apple Maps refines the list. Suggestions still shown from your previous typing can be picked while new ones load. Reopening Location doesn't search again until you edit the text. VoiceOver says the result count once per change and reports when Apple Maps is unavailable.
+- Dev: `ReminderLocation` (text + picked `PickedPlace` + `LocationProximity`) replaces the plain location string; `LocationSavePlan` decides note line vs `EKStructuredLocation` (100 m radius, `.enter` / `.leave` proximity alarm) and `RemindersService.fill` writes notes and both alarms behind `ReminderAlarmTarget`; `PlaceSearchModel` (250 ms debounce, ≥ 2 characters, stale results and picks dropped, ↑/↓ highlight kept across refinements, Esc clears it first via `SectionHandoff.handleEscape`, VoiceOver announcements; `SuggestionTable` keeps the shown rows resolvable) runs on `PlaceSearchService` (`MapsPlaceSearch`: `MKLocalSearchCompleter` + `MKLocalSearch`); `LocationMetrics` reserves 5 × 34 pt rows (262 pt section, 523 pt panel at 100 %); MapKit and CoreLocation are linked; E2E `schedule_notch_location` / `schedule_notch_section_switch` follow the taller section.
+
 ## 0.5.3
 
 - **Location in the notch.** In notch style the location button no longer opens a glass popover: the panel grows a Location section below the bottom bar, with the same motion as Set Date (Clear · Cancel · Done, ↩ = Done, Esc / Cancel keep the old location, ✓ applies an edit and saves). One section is open at a time; the location and calendar buttons (and `⌘D`) switch between them, and switching keeps what you typed: an edited location or date is applied before the other section opens (a typed date that is not one beeps and stays). The popover style keeps the popover. The location is trimmed the same way in both styles.

@@ -24,7 +24,9 @@ let package = Package(
                 .linkedFramework("AppKit"),
                 .linkedFramework("SwiftUI"),
                 .linkedFramework("EventKit"),
-                .linkedFramework("Carbon")
+                .linkedFramework("Carbon"),
+                .linkedFramework("MapKit"),
+                .linkedFramework("CoreLocation")
             ]
         ),
         .testTarget(
